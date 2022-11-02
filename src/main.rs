@@ -12,6 +12,9 @@ const PLAYER_SPEED: f32 = 160.0;
 const TOUNGE_SIZE: f32 = 24.0;
 const TOUNGE_SPEED: f32 = 120.0;
 
+const CAT_SIZE: f32 = 28.0;
+const CAT_SPEED: f32 = 140.0;
+
 #[derive(Component)]
 struct Player {
   rect: Rect,
@@ -19,6 +22,11 @@ struct Player {
 
 #[derive(Component)]
 struct Tounge {
+  rect: Rect,
+}
+
+#[derive(Component)]
+struct Cat {
   rect: Rect,
 }
 
@@ -44,6 +52,18 @@ fn spawn_tounge(mut commands: Commands) {
   });
 }
 
+fn spawn_cat(mut commands: Commands) {
+  commands.spawn().insert(Cat {
+    rect: Rect::new(
+      screen_width() - CAT_SIZE / 2.0,
+      screen_height() - CAT_SIZE / 2.0,
+      CAT_SIZE,
+      CAT_SIZE,
+    ),
+  });
+  commands.spawn().insert(Cat { rect: Rect::new(0.0, 0.0, CAT_SIZE, CAT_SIZE) });
+}
+
 fn control_player(mut players: Query<&mut Player>) {
   let x = (is_key_down(KeyCode::D) || is_key_down(KeyCode::Right)) as i32
     - (is_key_down(KeyCode::A) || is_key_down(KeyCode::Left)) as i32;
@@ -56,11 +76,11 @@ fn control_player(mut players: Query<&mut Player>) {
   }
 }
 
-fn move_tounge(mut tounges: Query<&mut Tounge>, players: Query<&Player>) {
+fn move_tounge(mut tounges: Query<&mut Tounge>, cats: Query<&Cat>) {
   for mut tounge in &mut tounges {
     let mut dir = Vec2::ZERO;
-    for player in &players {
-      dir += (player.rect.point() - tounge.rect.point()).normalize();
+    for cat in &cats {
+      dir += (cat.rect.point() - tounge.rect.point()).normalize();
     }
     dir = Vec2::ZERO - dir.normalize();
 
@@ -69,9 +89,18 @@ fn move_tounge(mut tounges: Query<&mut Tounge>, players: Query<&Player>) {
   }
 }
 
+fn move_cat(mut cats: Query<&mut Cat>, tounges: Query<&Tounge>) {
+  for mut cat in &mut cats {
+    let dir = (tounges.single().rect.point() - cat.rect.point()).normalize();
+    cat.rect.x += CAT_SPEED * dir.x * get_frame_time();
+    cat.rect.y += CAT_SPEED * dir.y * get_frame_time();
+  }
+}
+
 fn use_camera(mut camera: ResMut<Camera2D>, players: Query<&Player>) {
-  camera.target = players.single().rect.point();
-  set_camera(&camera.clone());
+  camera.target = vec2(0.0, 0.0);
+  camera.target = players.single().rect.center();
+  set_camera(camera.as_ref());
 }
 
 fn draw_player(camera: Res<Camera2D>, players: Query<&Player>) {
@@ -85,6 +114,13 @@ fn draw_tounge(camera: Res<Camera2D>, tounges: Query<&Tounge>) {
   for tounge in &tounges {
     let tounge_pos = camera.world_to_screen(tounge.rect.point());
     draw_rectangle(tounge_pos.x, tounge_pos.y, tounge.rect.w, tounge.rect.h, RED);
+  }
+}
+
+fn draw_cat(camera: Res<Camera2D>, cats: Query<&Cat>) {
+  for cat in &cats {
+    let cat_pos = camera.world_to_screen(cat.rect.point());
+    draw_rectangle(cat_pos.x, cat_pos.y, cat.rect.w, cat.rect.h, YELLOW);
   }
 }
 
@@ -106,12 +142,16 @@ async fn main() {
       SystemStage::parallel()
         .with_run_criteria(ShouldRun::once)
         .with_system(spawn_player)
-        .with_system(spawn_tounge),
+        .with_system(spawn_tounge)
+        .with_system(spawn_cat),
     )
     .with_stage_after(
       "start",
       "update",
-      SystemStage::parallel().with_system(control_player).with_system(move_tounge),
+      SystemStage::parallel()
+        .with_system(control_player)
+        .with_system(move_tounge)
+        .with_system(move_cat),
     )
     .with_stage_after(
       "update",
@@ -120,6 +160,7 @@ async fn main() {
         .with_system(use_camera)
         .with_system(draw_player)
         .with_system(draw_tounge)
+        .with_system(draw_cat)
         .with_system(use_default_camera),
     );
 
