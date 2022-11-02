@@ -15,10 +15,13 @@ const TOUNGE_SPEED: f32 = 120.0;
 const CAT_SIZE: f32 = 28.0;
 const CAT_SPEED: f32 = 140.0;
 const CAT_PROXIMITY: f32 = 70.0;
+const CAT_ATTACKER_STUN_TIME: f32 = 0.2;
+const CAT_DEFENDER_STUN_TIME: f32 = 1.0;
 
 #[derive(Component)]
 struct Player {
   rect: Rect,
+  stun_timer: f32,
 }
 
 #[derive(Component)]
@@ -46,6 +49,7 @@ fn spawn_player(mut commands: Commands) {
       PLAYER_SIZE,
       PLAYER_SIZE,
     ),
+    stun_timer: 0.0,
   });
 }
 
@@ -86,9 +90,13 @@ fn control_player(mut players: Query<&mut Player>, mut camera: ResMut<Camera2D>)
     - (is_key_down(KeyCode::W) || is_key_down(KeyCode::Up)) as i32;
 
   for mut player in &mut players {
-    player.rect.x += PLAYER_SPEED * x as f32 * get_frame_time();
-    player.rect.y += PLAYER_SPEED * y as f32 * get_frame_time();
-    camera.target = player.rect.center();
+    if player.stun_timer <= 0.0 {
+      player.rect.x += PLAYER_SPEED * x as f32 * get_frame_time();
+      player.rect.y += PLAYER_SPEED * y as f32 * get_frame_time();
+      camera.target = player.rect.center();
+    } else {
+      player.stun_timer -= get_frame_time();
+    }
   }
 }
 
@@ -96,9 +104,9 @@ fn move_tounge(mut tounges: Query<&mut Tounge>, cats: Query<&Cat>) {
   for mut tounge in &mut tounges {
     let mut dir = Vec2::ZERO;
     for cat in &cats {
-      dir += (cat.rect.point() - tounge.rect.point()).normalize();
+      dir += (cat.rect.point() - tounge.rect.point()).normalize_or_zero();
     }
-    dir = Vec2::ZERO - dir.normalize();
+    dir = Vec2::ZERO - dir.normalize_or_zero();
 
     tounge.rect.x += TOUNGE_SPEED * dir.x * get_frame_time();
     tounge.rect.y += TOUNGE_SPEED * dir.y * get_frame_time();
@@ -123,9 +131,27 @@ fn move_cat(mut cats: Query<&mut Cat>, tounges: Query<&Tounge>, players: Query<&
       tounges.single().rect
     };
 
-    let dir = (target.point() - cat.rect.point()).normalize();
+    let dir = (target.point() - cat.rect.point()).normalize_or_zero();
     cat.rect.x += CAT_SPEED * dir.x * get_frame_time();
     cat.rect.y += CAT_SPEED * dir.y * get_frame_time();
+  }
+}
+
+fn cat_collision(
+  mut commands: Commands,
+  mut players: Query<&mut Player>,
+  cats: Query<(Entity, &Cat)>,
+) {
+  for mut player in &mut players {
+    for (cat_entity, cat) in &cats {
+      if player.rect.overlaps(&cat.rect) {
+        commands.entity(cat_entity).despawn();
+        player.stun_timer = match cat.kind {
+          CatKind::Attacker => CAT_ATTACKER_STUN_TIME,
+          CatKind::Defender => CAT_DEFENDER_STUN_TIME,
+        };
+      }
+    }
   }
 }
 
@@ -184,7 +210,8 @@ async fn main() {
       SystemStage::parallel()
         .with_system(control_player)
         .with_system(move_tounge)
-        .with_system(move_cat),
+        .with_system(move_cat)
+        .with_system(cat_collision),
     )
     .with_stage_after(
       "update",
