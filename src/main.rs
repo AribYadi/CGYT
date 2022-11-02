@@ -1,5 +1,4 @@
 use bevy_ecs::prelude::*;
-use bevy_ecs::schedule::ShouldRun;
 use macroquad::prelude::*;
 
 fn window_conf() -> Conf {
@@ -17,6 +16,13 @@ const CAT_SPEED: f32 = 140.0;
 const CAT_PROXIMITY: f32 = 70.0;
 const CAT_ATTACKER_STUN_TIME: f32 = 0.2;
 const CAT_DEFENDER_STUN_TIME: f32 = 1.0;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum GameState {
+  Won,
+  Playing,
+  Lose,
+}
 
 #[derive(Component)]
 struct Player {
@@ -188,6 +194,7 @@ fn draw_cat(camera: Res<Camera2D>, cats: Query<&Cat>) {
 #[macroquad::main(window_conf)]
 async fn main() {
   let mut world = World::new();
+  world.insert_resource(State::new(GameState::Playing));
   world.insert_resource(Camera2D::from_display_rect(Rect::new(
     0.0,
     0.0,
@@ -196,31 +203,33 @@ async fn main() {
   )));
 
   let mut schedule = Schedule::default()
-    .with_stage(
-      "start",
-      SystemStage::parallel()
-        .with_run_criteria(ShouldRun::once)
-        .with_system(spawn_player)
-        .with_system(spawn_tounge)
-        .with_system(spawn_cat),
-    )
-    .with_stage_after(
-      "start",
-      "update",
-      SystemStage::parallel()
-        .with_system(control_player)
-        .with_system(move_tounge)
-        .with_system(move_cat)
-        .with_system(cat_collision),
-    )
-    .with_stage_after(
-      "update",
-      "late_update",
-      SystemStage::single_threaded()
-        .with_system(draw_player)
-        .with_system(draw_tounge)
-        .with_system(draw_cat),
-    );
+    .with_stage("update", SystemStage::parallel())
+    .with_stage_after("update", "late_update", SystemStage::single_threaded());
+
+  schedule.add_system_set_to_stage("update", State::<GameState>::get_driver());
+  schedule.add_system_set_to_stage("late_update", State::<GameState>::get_driver());
+  schedule.add_system_set_to_stage(
+    "update",
+    SystemSet::on_enter(GameState::Playing)
+      .with_system(spawn_player)
+      .with_system(spawn_tounge)
+      .with_system(spawn_cat),
+  );
+  schedule.add_system_set_to_stage(
+    "update",
+    SystemSet::on_update(GameState::Playing)
+      .with_system(control_player)
+      .with_system(move_tounge)
+      .with_system(move_cat)
+      .with_system(cat_collision),
+  );
+  schedule.add_system_set_to_stage(
+    "late_update",
+    SystemSet::on_update(GameState::Playing)
+      .with_system(draw_player)
+      .with_system(draw_tounge)
+      .with_system(draw_cat),
+  );
 
   loop {
     clear_background(WHITE);
