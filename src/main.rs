@@ -14,6 +14,7 @@ const TOUNGE_SPEED: f32 = 120.0;
 
 const CAT_SIZE: f32 = 28.0;
 const CAT_SPEED: f32 = 140.0;
+const CAT_PROXIMITY: f32 = 70.0;
 
 #[derive(Component)]
 struct Player {
@@ -28,6 +29,13 @@ struct Tounge {
 #[derive(Component)]
 struct Cat {
   rect: Rect,
+  kind: CatKind,
+}
+
+#[derive(PartialEq)]
+enum CatKind {
+  Attacker,
+  Defender,
 }
 
 fn spawn_player(mut commands: Commands) {
@@ -60,11 +68,18 @@ fn spawn_cat(mut commands: Commands) {
       CAT_SIZE,
       CAT_SIZE,
     ),
+    kind: CatKind::Attacker,
   });
-  commands.spawn().insert(Cat { rect: Rect::new(0.0, 0.0, CAT_SIZE, CAT_SIZE) });
+  commands
+    .spawn()
+    .insert(Cat { rect: Rect::new(0.0, 0.0, CAT_SIZE, CAT_SIZE), kind: CatKind::Attacker });
+  commands.spawn().insert(Cat {
+    rect: Rect::new(0.0, screen_height() - CAT_SIZE / 2.0, CAT_SIZE, CAT_SIZE),
+    kind: CatKind::Defender,
+  });
 }
 
-fn control_player(mut players: Query<&mut Player>) {
+fn control_player(mut players: Query<&mut Player>, mut camera: ResMut<Camera2D>) {
   let x = (is_key_down(KeyCode::D) || is_key_down(KeyCode::Right)) as i32
     - (is_key_down(KeyCode::A) || is_key_down(KeyCode::Left)) as i32;
   let y = (is_key_down(KeyCode::S) || is_key_down(KeyCode::Down)) as i32
@@ -73,6 +88,7 @@ fn control_player(mut players: Query<&mut Player>) {
   for mut player in &mut players {
     player.rect.x += PLAYER_SPEED * x as f32 * get_frame_time();
     player.rect.y += PLAYER_SPEED * y as f32 * get_frame_time();
+    camera.target = player.rect.center();
   }
 }
 
@@ -89,19 +105,31 @@ fn move_tounge(mut tounges: Query<&mut Tounge>, cats: Query<&Cat>) {
   }
 }
 
-fn move_cat(mut cats: Query<&mut Cat>, tounges: Query<&Tounge>) {
+fn move_cat(mut cats: Query<&mut Cat>, tounges: Query<&Tounge>, players: Query<&Player>) {
   for mut cat in &mut cats {
-    let dir = (tounges.single().rect.point() - cat.rect.point()).normalize();
+    let proximity = Rect::new(
+      cat.rect.x + CAT_SIZE / 2.0 - CAT_PROXIMITY,
+      cat.rect.y + CAT_SIZE / 2.0 - CAT_PROXIMITY,
+      CAT_PROXIMITY * 2.0,
+      CAT_PROXIMITY * 2.0,
+    );
+    let player = players.single();
+
+    let is_player_near = proximity.overlaps(&player.rect);
+
+    let target = if cat.kind == CatKind::Defender && is_player_near {
+      player.rect
+    } else {
+      tounges.single().rect
+    };
+
+    let dir = (target.point() - cat.rect.point()).normalize();
     cat.rect.x += CAT_SPEED * dir.x * get_frame_time();
     cat.rect.y += CAT_SPEED * dir.y * get_frame_time();
   }
 }
 
-fn use_camera(mut camera: ResMut<Camera2D>, players: Query<&Player>) {
-  camera.target = vec2(0.0, 0.0);
-  camera.target = players.single().rect.center();
-  set_camera(camera.as_ref());
-}
+fn use_camera(camera: Res<Camera2D>) { set_camera(camera.as_ref()); }
 
 fn draw_player(camera: Res<Camera2D>, players: Query<&Player>) {
   for player in &players {
@@ -120,7 +148,16 @@ fn draw_tounge(camera: Res<Camera2D>, tounges: Query<&Tounge>) {
 fn draw_cat(camera: Res<Camera2D>, cats: Query<&Cat>) {
   for cat in &cats {
     let cat_pos = camera.world_to_screen(cat.rect.point());
-    draw_rectangle(cat_pos.x, cat_pos.y, cat.rect.w, cat.rect.h, YELLOW);
+    draw_rectangle(
+      cat_pos.x,
+      cat_pos.y,
+      cat.rect.w,
+      cat.rect.h,
+      match cat.kind {
+        CatKind::Attacker => YELLOW,
+        CatKind::Defender => GRAY,
+      },
+    );
   }
 }
 
