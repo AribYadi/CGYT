@@ -8,12 +8,12 @@ fn window_conf() -> Conf {
 const PLAYER_SIZE: f32 = 32.0;
 const PLAYER_SPEED: f32 = 160.0;
 
-const TOUNGE_SIZE: f32 = 24.0;
-const TOUNGE_SPEED: f32 = 120.0;
+const TONGUE_SIZE: f32 = 24.0;
+const TONGUE_SPEED: f32 = 120.0;
 
 const CAT_SIZE: f32 = 28.0;
 const CAT_SPEED: f32 = 140.0;
-const CAT_PROXIMITY: f32 = 70.0;
+const CAT_PROXIMITY: f32 = 112.0;
 const CAT_ATTACKER_STUN_TIME: f32 = 0.2;
 const CAT_DEFENDER_STUN_TIME: f32 = 1.0;
 
@@ -31,7 +31,7 @@ struct Player {
 }
 
 #[derive(Component)]
-struct Tounge {
+struct Tongue {
   rect: Rect,
 }
 
@@ -47,6 +47,18 @@ enum CatKind {
   Defender,
 }
 
+// TODO
+fn won(mut bg_color: ResMut<Color>, mut game_state: ResMut<State<GameState>>) {
+  *bg_color = DARKGREEN;
+  let _ = game_state.set(GameState::Playing);
+}
+
+fn despawn_all(mut commands: Commands, entities: Query<Entity>) {
+  for entity in &entities {
+    commands.entity(entity).despawn();
+  }
+}
+
 fn spawn_player(mut commands: Commands) {
   commands.spawn().insert(Player {
     rect: Rect::new(
@@ -59,14 +71,9 @@ fn spawn_player(mut commands: Commands) {
   });
 }
 
-fn spawn_tounge(mut commands: Commands) {
-  commands.spawn().insert(Tounge {
-    rect: Rect::new(
-      screen_width() / 2.0 - TOUNGE_SIZE / 2.0,
-      screen_height() / 2.0 - TOUNGE_SIZE / 2.0,
-      TOUNGE_SIZE,
-      TOUNGE_SIZE,
-    ),
+fn spawn_tongue(mut commands: Commands) {
+  commands.spawn().insert(Tongue {
+    rect: Rect::new(screen_width() - TONGUE_SIZE / 2.0, 0.0, TONGUE_SIZE, TONGUE_SIZE),
   });
 }
 
@@ -106,20 +113,36 @@ fn control_player(mut players: Query<&mut Player>, mut camera: ResMut<Camera2D>)
   }
 }
 
-fn move_tounge(mut tounges: Query<&mut Tounge>, cats: Query<&Cat>) {
-  for mut tounge in &mut tounges {
+fn move_tongue(mut tongues: Query<&mut Tongue>, cats: Query<&Cat>) {
+  for mut tongue in &mut tongues {
     let mut dir = Vec2::ZERO;
     for cat in &cats {
-      dir += (cat.rect.point() - tounge.rect.point()).normalize_or_zero();
+      dir += (cat.rect.point() - tongue.rect.point()).normalize_or_zero();
     }
     dir = Vec2::ZERO - dir.normalize_or_zero();
 
-    tounge.rect.x += TOUNGE_SPEED * dir.x * get_frame_time();
-    tounge.rect.y += TOUNGE_SPEED * dir.y * get_frame_time();
+    tongue.rect.x += TONGUE_SPEED * dir.x * get_frame_time();
+    tongue.rect.y += TONGUE_SPEED * dir.y * get_frame_time();
   }
 }
 
-fn move_cat(mut cats: Query<&mut Cat>, tounges: Query<&Tounge>, players: Query<&Player>) {
+fn tongue_collision(
+  tongues: Query<&Tongue>,
+  players: Query<&Player>,
+  cats: Query<&Cat>,
+  mut game_state: ResMut<State<GameState>>,
+) {
+  for tongue in &tongues {
+    if players.iter().any(|player| player.rect.overlaps(&tongue.rect)) {
+      let _ = game_state.set(GameState::Won);
+    }
+    if cats.iter().any(|player| player.rect.overlaps(&tongue.rect)) {
+      let _ = game_state.set(GameState::Lose);
+    }
+  }
+}
+
+fn move_cat(mut cats: Query<&mut Cat>, tongues: Query<&Tongue>, players: Query<&Player>) {
   for mut cat in &mut cats {
     let proximity = Rect::new(
       cat.rect.x + CAT_SIZE / 2.0 - CAT_PROXIMITY,
@@ -134,7 +157,7 @@ fn move_cat(mut cats: Query<&mut Cat>, tounges: Query<&Tounge>, players: Query<&
     let target = if cat.kind == CatKind::Defender && is_player_near {
       player.rect
     } else {
-      tounges.single().rect
+      tongues.single().rect
     };
 
     let dir = (target.point() - cat.rect.point()).normalize_or_zero();
@@ -168,10 +191,10 @@ fn draw_player(camera: Res<Camera2D>, players: Query<&Player>) {
   }
 }
 
-fn draw_tounge(camera: Res<Camera2D>, tounges: Query<&Tounge>) {
-  for tounge in &tounges {
-    let tounge_pos = camera.world_to_screen(tounge.rect.point());
-    draw_rectangle(tounge_pos.x, tounge_pos.y, tounge.rect.w, tounge.rect.h, RED);
+fn draw_tongue(camera: Res<Camera2D>, tongues: Query<&Tongue>) {
+  for tongue in &tongues {
+    let tongue_pos = camera.world_to_screen(tongue.rect.point());
+    draw_rectangle(tongue_pos.x, tongue_pos.y, tongue.rect.w, tongue.rect.h, RED);
   }
 }
 
@@ -191,9 +214,16 @@ fn draw_cat(camera: Res<Camera2D>, cats: Query<&Cat>) {
   }
 }
 
+// TODO
+fn lose(mut bg_color: ResMut<Color>, mut game_state: ResMut<State<GameState>>) {
+  *bg_color = MAROON;
+  let _ = game_state.set(GameState::Playing);
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
   let mut world = World::new();
+  world.insert_resource(WHITE);
   world.insert_resource(State::new(GameState::Playing));
   world.insert_resource(Camera2D::from_display_rect(Rect::new(
     0.0,
@@ -208,18 +238,23 @@ async fn main() {
 
   schedule.add_system_set_to_stage("update", State::<GameState>::get_driver());
   schedule.add_system_set_to_stage("late_update", State::<GameState>::get_driver());
+
+  schedule.add_system_set_to_stage("update", SystemSet::on_update(GameState::Won).with_system(won));
+
   schedule.add_system_set_to_stage(
     "update",
     SystemSet::on_enter(GameState::Playing)
+      .with_system(despawn_all)
       .with_system(spawn_player)
-      .with_system(spawn_tounge)
+      .with_system(spawn_tongue)
       .with_system(spawn_cat),
   );
   schedule.add_system_set_to_stage(
     "update",
     SystemSet::on_update(GameState::Playing)
       .with_system(control_player)
-      .with_system(move_tounge)
+      .with_system(move_tongue)
+      .with_system(tongue_collision)
       .with_system(move_cat)
       .with_system(cat_collision),
   );
@@ -227,12 +262,15 @@ async fn main() {
     "late_update",
     SystemSet::on_update(GameState::Playing)
       .with_system(draw_player)
-      .with_system(draw_tounge)
+      .with_system(draw_tongue)
       .with_system(draw_cat),
   );
 
+  schedule
+    .add_system_set_to_stage("update", SystemSet::on_update(GameState::Lose).with_system(lose));
+
   loop {
-    clear_background(WHITE);
+    clear_background(*world.resource());
 
     schedule.run(&mut world);
 
