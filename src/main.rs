@@ -129,8 +129,6 @@ fn move_cat(mut cats: Query<&mut Cat>, tounges: Query<&Tounge>, players: Query<&
   }
 }
 
-fn use_camera(camera: Res<Camera2D>) { set_camera(camera.as_ref()); }
-
 fn draw_player(camera: Res<Camera2D>, players: Query<&Player>) {
   for player in &players {
     let player_pos = camera.world_to_screen(player.rect.point());
@@ -160,8 +158,6 @@ fn draw_cat(camera: Res<Camera2D>, cats: Query<&Cat>) {
     );
   }
 }
-
-fn use_default_camera() { set_default_camera(); }
 
 #[macroquad::main(window_conf)]
 async fn main() {
@@ -194,11 +190,9 @@ async fn main() {
       "update",
       "late_update",
       SystemStage::single_threaded()
-        .with_system(use_camera)
         .with_system(draw_player)
         .with_system(draw_tounge)
-        .with_system(draw_cat)
-        .with_system(use_default_camera),
+        .with_system(draw_cat),
     );
 
   loop {
