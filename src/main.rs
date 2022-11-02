@@ -69,21 +69,37 @@ fn move_tounge(mut tounges: Query<&mut Tounge>, players: Query<&Player>) {
   }
 }
 
-fn draw_player(players: Query<&Player>) {
+fn use_camera(mut camera: ResMut<Camera2D>, players: Query<&Player>) {
+  camera.target = players.single().rect.point();
+  set_camera(&camera.clone());
+}
+
+fn draw_player(camera: Res<Camera2D>, players: Query<&Player>) {
   for player in &players {
-    draw_rectangle(player.rect.x, player.rect.y, player.rect.w, player.rect.h, GREEN);
+    let player_pos = camera.world_to_screen(player.rect.point());
+    draw_rectangle(player_pos.x, player_pos.y, player.rect.w, player.rect.h, GREEN);
   }
 }
 
-fn draw_tounge(tounges: Query<&Tounge>) {
+fn draw_tounge(camera: Res<Camera2D>, tounges: Query<&Tounge>) {
   for tounge in &tounges {
-    draw_rectangle(tounge.rect.x, tounge.rect.y, tounge.rect.w, tounge.rect.h, RED);
+    let tounge_pos = camera.world_to_screen(tounge.rect.point());
+    draw_rectangle(tounge_pos.x, tounge_pos.y, tounge.rect.w, tounge.rect.h, RED);
   }
 }
+
+fn use_default_camera() { set_default_camera(); }
 
 #[macroquad::main(window_conf)]
 async fn main() {
   let mut world = World::new();
+  world.insert_resource(Camera2D::from_display_rect(Rect::new(
+    0.0,
+    0.0,
+    screen_width(),
+    screen_height(),
+  )));
+
   let mut schedule = Schedule::default()
     .with_stage(
       "start",
@@ -100,7 +116,11 @@ async fn main() {
     .with_stage_after(
       "update",
       "late_update",
-      SystemStage::single_threaded().with_system(draw_player).with_system(draw_tounge),
+      SystemStage::single_threaded()
+        .with_system(use_camera)
+        .with_system(draw_player)
+        .with_system(draw_tounge)
+        .with_system(use_default_camera),
     );
 
   loop {
