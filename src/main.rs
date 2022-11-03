@@ -16,13 +16,11 @@ const PLAYER_POWERUP_COOLDOWN: f32 = 6.0;
 const TONGUE_SIZE: f32 = 24.0;
 const TONGUE_SPEED: f32 = 120.0;
 const TONGUE_MAX_DEST: f32 = 120.0;
-const TONGUE_DEST_RANGE: f32 = 96.0;
 
 const CAT_SIZE: f32 = 28.0;
 const CAT_SPEED: f32 = 140.0;
 const CAT_PROXIMITY: f32 = 112.0;
 const CAT_MAX_DEST: f32 = 140.0;
-const CAT_DEST_RANGE: f32 = 140.0;
 const CAT_ATTACKER_STUN_TIME: f32 = 0.2;
 const CAT_DEFENDER_STUN_TIME: f32 = 1.0;
 
@@ -40,7 +38,7 @@ struct Pathfinder {
 }
 
 impl Pathfinder {
-  fn update_path(&mut self, start: Vec2, speed: i32, end: Vec2, range: f32) {
+  fn update_path(&mut self, start: Vec2, speed: i32, end: Vec2) {
     if self.i >= self.path.len() {
       let (path, _) = astar(
         &(start.x as i32, start.y as i32),
@@ -58,8 +56,13 @@ impl Pathfinder {
         },
         |&(x, y)| vec2(x as f32, y as f32).distance(end) as i32,
         |&(x, y)| {
-          Rect::new(end.x - range / 2.0, end.y - range / 2.0, range, range)
-            .contains(vec2(x as f32, y as f32))
+          Rect::new(
+            end.x - speed as f32 / 2.0,
+            end.y - speed as f32 / 2.0,
+            speed as f32,
+            speed as f32,
+          )
+          .contains(vec2(x as f32, y as f32))
         },
       )
       .unwrap();
@@ -222,7 +225,7 @@ fn move_tongue(mut tongues: Query<(&mut Tongue, &mut Pathfinder)>, cats: Query<&
     dir = Vec2::ZERO - dir.normalize_or_zero();
     let dest = tongue.rect.point() + dir * TONGUE_MAX_DEST;
 
-    pathfinder.update_path(tongue.rect.point(), TONGUE_SPEED as i32, dest, TONGUE_DEST_RANGE);
+    pathfinder.update_path(tongue.rect.point(), TONGUE_SPEED as i32, dest);
     pathfinder.update_pos(&mut tongue.rect);
   }
 }
@@ -268,7 +271,7 @@ fn move_cat(
     let dir = (target.point() - cat.rect.point()).normalize_or_zero();
     let dest = cat.rect.point() + dir * CAT_MAX_DEST;
 
-    pathfinder.update_path(cat.rect.point(), CAT_SPEED as i32, dest, CAT_DEST_RANGE);
+    pathfinder.update_path(cat.rect.point(), CAT_SPEED as i32, dest);
     pathfinder.update_pos(&mut cat.rect);
   }
 }
