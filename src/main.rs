@@ -7,6 +7,10 @@ fn window_conf() -> Conf {
 
 const PLAYER_SIZE: f32 = 32.0;
 const PLAYER_SPEED: f32 = 160.0;
+const PLAYER_SPEED_UP_TIME: f32 = 2.0;
+const PLAYER_SPEED_UP_SPEED: f32 = 256.0;
+const PLAYER_NO_STUN_TIME: f32 = 4.0;
+const PLAYER_POWERUP_COOLDOWN: f32 = 6.0;
 
 const TONGUE_SIZE: f32 = 24.0;
 const TONGUE_SPEED: f32 = 120.0;
@@ -28,6 +32,15 @@ enum GameState {
 struct Player {
   rect: Rect,
   stun_timer: f32,
+  powerup_timer: f32,
+  powerup_kind: PowerUpKind,
+  powerup_cooldown_timer: f32,
+}
+
+#[derive(PartialEq)]
+enum PowerUpKind {
+  SpeedUp,
+  NoStun,
 }
 
 #[derive(Component)]
@@ -68,6 +81,9 @@ fn spawn_player(mut commands: Commands) {
       PLAYER_SIZE,
     ),
     stun_timer: 0.0,
+    powerup_timer: 0.0,
+    powerup_kind: PowerUpKind::NoStun,
+    powerup_cooldown_timer: 0.0,
   });
 }
 
@@ -101,14 +117,33 @@ fn control_player(mut players: Query<&mut Player>, mut camera: ResMut<Camera2D>)
     - (is_key_down(KeyCode::A) || is_key_down(KeyCode::Left)) as i32;
   let y = (is_key_down(KeyCode::S) || is_key_down(KeyCode::Down)) as i32
     - (is_key_down(KeyCode::W) || is_key_down(KeyCode::Up)) as i32;
+  let trigger_powerup = is_key_pressed(KeyCode::P) || is_key_down(KeyCode::Q);
 
   for mut player in &mut players {
     if player.stun_timer <= 0.0 {
-      player.rect.x += PLAYER_SPEED * x as f32 * get_frame_time();
-      player.rect.y += PLAYER_SPEED * y as f32 * get_frame_time();
+      let speed = if player.powerup_kind == PowerUpKind::SpeedUp && player.powerup_timer > 0.0 {
+        PLAYER_SPEED_UP_SPEED
+      } else {
+        PLAYER_SPEED
+      };
+      player.rect.x += speed * x as f32 * get_frame_time();
+      player.rect.y += speed * y as f32 * get_frame_time();
       camera.target = player.rect.center();
+
+      if trigger_powerup && player.powerup_cooldown_timer <= 0.0 {
+        player.powerup_timer = match player.powerup_kind {
+          PowerUpKind::SpeedUp => PLAYER_SPEED_UP_TIME,
+          PowerUpKind::NoStun => PLAYER_NO_STUN_TIME,
+        };
+        player.powerup_cooldown_timer = PLAYER_POWERUP_COOLDOWN;
+      } else if player.powerup_timer <= 0.0 {
+        player.powerup_cooldown_timer -= get_frame_time();
+      }
     } else {
       player.stun_timer -= get_frame_time();
+    }
+    if player.powerup_timer > 0.0 {
+      player.powerup_timer -= get_frame_time();
     }
   }
 }
@@ -175,10 +210,12 @@ fn cat_collision(
     for (cat_entity, cat) in &cats {
       if player.rect.overlaps(&cat.rect) {
         commands.entity(cat_entity).despawn();
-        player.stun_timer = match cat.kind {
-          CatKind::Attacker => CAT_ATTACKER_STUN_TIME,
-          CatKind::Defender => CAT_DEFENDER_STUN_TIME,
-        };
+        if !(player.powerup_kind == PowerUpKind::NoStun && player.powerup_timer > 0.0) {
+          player.stun_timer = match cat.kind {
+            CatKind::Attacker => CAT_ATTACKER_STUN_TIME,
+            CatKind::Defender => CAT_DEFENDER_STUN_TIME,
+          };
+        }
       }
     }
   }
