@@ -21,6 +21,8 @@ const TONGUE_DEST_RANGE: f32 = 96.0;
 const CAT_SIZE: f32 = 28.0;
 const CAT_SPEED: f32 = 140.0;
 const CAT_PROXIMITY: f32 = 112.0;
+const CAT_MAX_DEST: f32 = 140.0;
+const CAT_DEST_RANGE: f32 = 140.0;
 const CAT_ATTACKER_STUN_TIME: f32 = 0.2;
 const CAT_DEFENDER_STUN_TIME: f32 = 1.0;
 
@@ -150,22 +152,29 @@ fn spawn_tongue(mut commands: Commands) {
 }
 
 fn spawn_cat(mut commands: Commands) {
-  commands.spawn().insert(Cat {
-    rect: Rect::new(
-      screen_width() - CAT_SIZE / 2.0,
-      screen_height() - CAT_SIZE / 2.0,
-      CAT_SIZE,
-      CAT_SIZE,
-    ),
-    kind: CatKind::Attacker,
-  });
   commands
     .spawn()
-    .insert(Cat { rect: Rect::new(0.0, 0.0, CAT_SIZE, CAT_SIZE), kind: CatKind::Attacker });
-  commands.spawn().insert(Cat {
-    rect: Rect::new(0.0, screen_height() - CAT_SIZE / 2.0, CAT_SIZE, CAT_SIZE),
-    kind: CatKind::Defender,
-  });
+    .insert(Cat {
+      rect: Rect::new(
+        screen_width() - CAT_SIZE / 2.0,
+        screen_height() - CAT_SIZE / 2.0,
+        CAT_SIZE,
+        CAT_SIZE,
+      ),
+      kind: CatKind::Attacker,
+    })
+    .insert(Pathfinder { path: vec![], i: 1 });
+  commands
+    .spawn()
+    .insert(Cat { rect: Rect::new(0.0, 0.0, CAT_SIZE, CAT_SIZE), kind: CatKind::Attacker })
+    .insert(Pathfinder { path: vec![], i: 1 });
+  commands
+    .spawn()
+    .insert(Cat {
+      rect: Rect::new(0.0, screen_height() - CAT_SIZE / 2.0, CAT_SIZE, CAT_SIZE),
+      kind: CatKind::Defender,
+    })
+    .insert(Pathfinder { path: vec![], i: 1 });
 }
 
 fn control_player(mut players: Query<&mut Player>, mut camera: ResMut<Camera2D>) {
@@ -215,9 +224,6 @@ fn move_tongue(mut tongues: Query<(&mut Tongue, &mut Pathfinder)>, cats: Query<&
 
     pathfinder.update_path(tongue.rect.point(), TONGUE_SPEED as i32, dest, TONGUE_DEST_RANGE);
     pathfinder.update_pos(&mut tongue.rect);
-
-    // tongue.rect.x += TONGUE_SPEED * dir.x * get_frame_time();
-    // tongue.rect.y += TONGUE_SPEED * dir.y * get_frame_time();
   }
 }
 
@@ -237,8 +243,12 @@ fn tongue_collision(
   }
 }
 
-fn move_cat(mut cats: Query<&mut Cat>, tongues: Query<&Tongue>, players: Query<&Player>) {
-  for mut cat in &mut cats {
+fn move_cat(
+  mut cats: Query<(&mut Cat, &mut Pathfinder)>,
+  tongues: Query<&Tongue>,
+  players: Query<&Player>,
+) {
+  for (mut cat, mut pathfinder) in &mut cats {
     let proximity = Rect::new(
       cat.rect.x + CAT_SIZE / 2.0 - CAT_PROXIMITY,
       cat.rect.y + CAT_SIZE / 2.0 - CAT_PROXIMITY,
@@ -256,8 +266,10 @@ fn move_cat(mut cats: Query<&mut Cat>, tongues: Query<&Tongue>, players: Query<&
     };
 
     let dir = (target.point() - cat.rect.point()).normalize_or_zero();
-    cat.rect.x += CAT_SPEED * dir.x * get_frame_time();
-    cat.rect.y += CAT_SPEED * dir.y * get_frame_time();
+    let dest = cat.rect.point() + dir * CAT_MAX_DEST;
+
+    pathfinder.update_path(cat.rect.point(), CAT_SPEED as i32, dest, CAT_DEST_RANGE);
+    pathfinder.update_pos(&mut cat.rect);
   }
 }
 
