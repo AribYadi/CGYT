@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 bevy_ecs = "0.8.1"
 macroquad = "0.3.24"
+pathfinding = "3.0.14"

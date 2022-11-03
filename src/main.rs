@@ -1,5 +1,6 @@
 use bevy_ecs::prelude::*;
 use macroquad::prelude::*;
+use pathfinding::prelude::*;
 
 fn window_conf() -> Conf {
   Conf { window_title: "Game Off 2022".to_string(), ..Default::default() }
@@ -14,6 +15,8 @@ const PLAYER_POWERUP_COOLDOWN: f32 = 6.0;
 
 const TONGUE_SIZE: f32 = 24.0;
 const TONGUE_SPEED: f32 = 120.0;
+const TONGUE_MAX_DEST: f32 = 120.0;
+const TONGUE_DEST_RANGE: f32 = 96.0;
 
 const CAT_SIZE: f32 = 28.0;
 const CAT_SPEED: f32 = 140.0;
@@ -26,6 +29,56 @@ enum GameState {
   Won,
   Playing,
   Lose,
+}
+
+#[derive(Component)]
+struct Pathfinder {
+  path: Vec<(i32, i32)>,
+  i: usize,
+}
+
+impl Pathfinder {
+  fn update_path(&mut self, start: Vec2, speed: i32, end: Vec2, range: f32) {
+    if self.i >= self.path.len() {
+      let (path, _) = astar(
+        &(start.x as i32, start.y as i32),
+        |&(x, y)| {
+          vec![
+            ((x + speed, y), 1),
+            ((x + speed, y + speed), 1),
+            ((x, y + speed), 1),
+            ((x - speed, y + speed), 1),
+            ((x - speed, y), 1),
+            ((x - speed, y - speed), 1),
+            ((x, y - speed), 1),
+            ((x + speed, y - speed), 1),
+          ]
+        },
+        |&(x, y)| vec2(x as f32, y as f32).distance(end) as i32,
+        |&(x, y)| {
+          Rect::new(end.x - range / 2.0, end.y - range / 2.0, range, range)
+            .contains(vec2(x as f32, y as f32))
+        },
+      )
+      .unwrap();
+      self.path = path;
+      self.i = 1;
+    }
+  }
+
+  fn update_pos(&mut self, rect: &mut Rect) {
+    if self.i < self.path.len() {
+      let path = self.path[self.i];
+      let dist = vec2(path.0 as f32 - rect.x.floor(), path.1 as f32 - rect.y.floor());
+
+      let (ox, oy) = (rect.x, rect.y);
+      rect.x += dist.x * get_frame_time();
+      rect.y += dist.y * get_frame_time();
+      if rect.x.floor() > ox.floor() || rect.y.floor() > oy.floor() {
+        self.i += 1;
+      }
+    }
+  }
 }
 
 #[derive(Component)]
@@ -88,9 +141,12 @@ fn spawn_player(mut commands: Commands) {
 }
 
 fn spawn_tongue(mut commands: Commands) {
-  commands.spawn().insert(Tongue {
-    rect: Rect::new(screen_width() - TONGUE_SIZE / 2.0, 0.0, TONGUE_SIZE, TONGUE_SIZE),
-  });
+  commands
+    .spawn()
+    .insert(Tongue {
+      rect: Rect::new(screen_width() - TONGUE_SIZE / 2.0, 0.0, TONGUE_SIZE, TONGUE_SIZE),
+    })
+    .insert(Pathfinder { path: vec![], i: 1 });
 }
 
 fn spawn_cat(mut commands: Commands) {
@@ -148,16 +204,20 @@ fn control_player(mut players: Query<&mut Player>, mut camera: ResMut<Camera2D>)
   }
 }
 
-fn move_tongue(mut tongues: Query<&mut Tongue>, cats: Query<&Cat>) {
-  for mut tongue in &mut tongues {
+fn move_tongue(mut tongues: Query<(&mut Tongue, &mut Pathfinder)>, cats: Query<&Cat>) {
+  for (mut tongue, mut pathfinder) in &mut tongues {
     let mut dir = Vec2::ZERO;
     for cat in &cats {
       dir += (cat.rect.point() - tongue.rect.point()).normalize_or_zero();
     }
     dir = Vec2::ZERO - dir.normalize_or_zero();
+    let dest = tongue.rect.point() + dir * TONGUE_MAX_DEST;
 
-    tongue.rect.x += TONGUE_SPEED * dir.x * get_frame_time();
-    tongue.rect.y += TONGUE_SPEED * dir.y * get_frame_time();
+    pathfinder.update_path(tongue.rect.point(), TONGUE_SPEED as i32, dest, TONGUE_DEST_RANGE);
+    pathfinder.update_pos(&mut tongue.rect);
+
+    // tongue.rect.x += TONGUE_SPEED * dir.x * get_frame_time();
+    // tongue.rect.y += TONGUE_SPEED * dir.y * get_frame_time();
   }
 }
 
