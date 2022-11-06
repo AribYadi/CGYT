@@ -197,13 +197,23 @@ fn control_player(
       player.rect.y += speed * y as f32 * get_frame_time();
 
       for obstacle in &obstacles {
+        let mut intersectioned = (0.0, 0.0);
+
         while let Some(intersection) = player.rect.intersect(obstacle.rect) {
+          intersectioned = (intersection.w, intersection.h);
           if intersection.w > 0.0 {
             player.rect.x -= FIX_COLLISION * x as f32 * get_frame_time();
           }
           if intersection.h > 0.0 {
             player.rect.y -= FIX_COLLISION * y as f32 * get_frame_time();
           }
+        }
+
+        if (intersectioned.0 - intersectioned.1).abs() < f32::EPSILON {
+        } else if intersectioned.0 > intersectioned.1 {
+          player.rect.y -= speed * y as f32 * get_frame_time();
+        } else {
+          player.rect.x -= speed * x as f32 * get_frame_time();
         }
       }
 
