@@ -11,7 +11,7 @@ const PLAYER_SPEED_UP_TIME: f32 = 2.0;
 const PLAYER_SPEED_UP_SPEED: f32 = 256.0;
 const PLAYER_NO_STUN_TIME: f32 = 4.0;
 const PLAYER_POWERUP_COOLDOWN: f32 = 6.0;
-const PLAYER_FIX_COLLISION: f32 = 5.0;
+const FIX_COLLISION: f32 = 5.0;
 
 const TONGUE_SIZE: f32 = 24.0;
 const TONGUE_SPEED: f32 = 120.0;
@@ -37,10 +37,32 @@ enum GameState {
 struct Pathfinder {}
 
 impl Pathfinder {
-  fn update_pos(&mut self, start: &mut Rect, speed: f32, end: Vec2) {
+  fn update_pos(&mut self, start: &mut Rect, speed: f32, end: Vec2, obstacles: &Query<&Obstacle>) {
     let dir = (end - start.point()).normalize_or_zero();
+
     start.x += speed * dir.x * get_frame_time();
     start.y += speed * dir.y * get_frame_time();
+
+    for obstacle in obstacles {
+      let mut intersectioned = (0.0, 0.0);
+
+      while let Some(intersection) = start.intersect(obstacle.rect) {
+        intersectioned = (intersection.w, intersection.h);
+        if intersection.w > 0.0 {
+          start.x -= FIX_COLLISION * dir.x * get_frame_time();
+        }
+        if intersection.h > 0.0 {
+          start.y -= FIX_COLLISION * dir.y * get_frame_time();
+        }
+      }
+
+      if (intersectioned.0 - intersectioned.1).abs() < f32::EPSILON {
+      } else if intersectioned.0 > intersectioned.1 {
+        start.y -= speed * dir.y * get_frame_time();
+      } else {
+        start.x -= speed * dir.x * get_frame_time();
+      }
+    }
   }
 }
 
@@ -177,10 +199,10 @@ fn control_player(
       for obstacle in &obstacles {
         while let Some(intersection) = player.rect.intersect(obstacle.rect) {
           if intersection.w > 0.0 {
-            player.rect.x -= PLAYER_FIX_COLLISION * x as f32 * get_frame_time();
+            player.rect.x -= FIX_COLLISION * x as f32 * get_frame_time();
           }
           if intersection.h > 0.0 {
-            player.rect.y -= PLAYER_FIX_COLLISION * y as f32 * get_frame_time();
+            player.rect.y -= FIX_COLLISION * y as f32 * get_frame_time();
           }
         }
       }
@@ -205,7 +227,11 @@ fn control_player(
   }
 }
 
-fn move_tongue(mut tongues: Query<(&mut Tongue, &mut Pathfinder)>, cats: Query<&Cat>) {
+fn move_tongue(
+  mut tongues: Query<(&mut Tongue, &mut Pathfinder)>,
+  cats: Query<&Cat>,
+  obstacles: Query<&Obstacle>,
+) {
   for (mut tongue, mut pathfinder) in &mut tongues {
     let mut dir = Vec2::ZERO;
     for cat in &cats {
@@ -214,7 +240,7 @@ fn move_tongue(mut tongues: Query<(&mut Tongue, &mut Pathfinder)>, cats: Query<&
     dir = Vec2::ZERO - dir.normalize_or_zero();
     let dest = tongue.rect.point() + dir * TONGUE_MAX_DEST;
 
-    pathfinder.update_pos(&mut tongue.rect, TONGUE_SPEED, dest);
+    pathfinder.update_pos(&mut tongue.rect, TONGUE_SPEED, dest, &obstacles);
   }
 }
 
@@ -238,6 +264,7 @@ fn move_cat(
   mut cats: Query<(&mut Cat, &mut Pathfinder)>,
   tongues: Query<&Tongue>,
   players: Query<&Player>,
+  obstacles: Query<&Obstacle>,
 ) {
   for (mut cat, mut pathfinder) in &mut cats {
     let proximity = Rect::new(
@@ -259,7 +286,7 @@ fn move_cat(
     let dir = (target.point() - cat.rect.point()).normalize_or_zero();
     let dest = cat.rect.point() + dir * CAT_MAX_DEST;
 
-    pathfinder.update_pos(&mut cat.rect, CAT_SPEED, dest);
+    pathfinder.update_pos(&mut cat.rect, CAT_SPEED, dest, &obstacles);
   }
 }
 
