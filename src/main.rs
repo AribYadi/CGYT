@@ -23,6 +23,8 @@ const CAT_MAX_DEST: f32 = 140.0;
 const CAT_ATTACKER_STUN_TIME: f32 = 0.2;
 const CAT_DEFENDER_STUN_TIME: f32 = 1.0;
 
+const OBSTACLE_SIZE: f32 = 128.0;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum GameState {
   Won,
@@ -71,6 +73,11 @@ struct Cat {
 enum CatKind {
   Attacker,
   Defender,
+}
+
+#[derive(Component)]
+struct Obstacle {
+  rect: Rect,
 }
 
 // TODO
@@ -131,6 +138,15 @@ fn spawn_cat(mut commands: Commands) {
     .insert(Cat {
       rect: Rect::new(0.0, screen_height() - CAT_SIZE / 2.0, CAT_SIZE, CAT_SIZE),
       kind: CatKind::Defender,
+    })
+    .insert(Pathfinder {});
+}
+
+fn spawn_obstacle(mut commands: Commands) {
+  commands
+    .spawn()
+    .insert(Obstacle {
+      rect: Rect::new(screen_width() + 100.0, -100.0, OBSTACLE_SIZE, OBSTACLE_SIZE),
     })
     .insert(Pathfinder {});
 }
@@ -279,6 +295,13 @@ fn draw_cat(camera: Res<Camera2D>, cats: Query<&Cat>) {
   }
 }
 
+fn draw_obstacle(camera: Res<Camera2D>, obstacles: Query<&Obstacle>) {
+  for obstacle in &obstacles {
+    let obstacle_pos = camera.world_to_screen(obstacle.rect.point());
+    draw_rectangle(obstacle_pos.x, obstacle_pos.y, obstacle.rect.w, obstacle.rect.h, BROWN);
+  }
+}
+
 // TODO
 fn lose(mut bg_color: ResMut<Color>, mut game_state: ResMut<State<GameState>>) {
   *bg_color = MAROON;
@@ -312,7 +335,8 @@ async fn main() {
       .with_system(despawn_all)
       .with_system(spawn_player)
       .with_system(spawn_tongue)
-      .with_system(spawn_cat),
+      .with_system(spawn_cat)
+      .with_system(spawn_obstacle),
   );
   schedule.add_system_set_to_stage(
     "update",
@@ -328,7 +352,8 @@ async fn main() {
     SystemSet::on_update(GameState::Playing)
       .with_system(draw_player)
       .with_system(draw_tongue)
-      .with_system(draw_cat),
+      .with_system(draw_cat)
+      .with_system(draw_obstacle),
   );
 
   schedule
