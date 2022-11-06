@@ -11,6 +11,7 @@ const PLAYER_SPEED_UP_TIME: f32 = 2.0;
 const PLAYER_SPEED_UP_SPEED: f32 = 256.0;
 const PLAYER_NO_STUN_TIME: f32 = 4.0;
 const PLAYER_POWERUP_COOLDOWN: f32 = 6.0;
+const PLAYER_FIX_COLLISION: f32 = 5.0;
 
 const TONGUE_SIZE: f32 = 24.0;
 const TONGUE_SPEED: f32 = 120.0;
@@ -151,7 +152,11 @@ fn spawn_obstacle(mut commands: Commands) {
     .insert(Pathfinder {});
 }
 
-fn control_player(mut players: Query<&mut Player>, mut camera: ResMut<Camera2D>) {
+fn control_player(
+  mut players: Query<&mut Player>,
+  mut camera: ResMut<Camera2D>,
+  obstacles: Query<&Obstacle>,
+) {
   let x = (is_key_down(KeyCode::D) || is_key_down(KeyCode::Right)) as i32
     - (is_key_down(KeyCode::A) || is_key_down(KeyCode::Left)) as i32;
   let y = (is_key_down(KeyCode::S) || is_key_down(KeyCode::Down)) as i32
@@ -165,8 +170,21 @@ fn control_player(mut players: Query<&mut Player>, mut camera: ResMut<Camera2D>)
       } else {
         PLAYER_SPEED
       };
+
       player.rect.x += speed * x as f32 * get_frame_time();
       player.rect.y += speed * y as f32 * get_frame_time();
+
+      for obstacle in &obstacles {
+        while let Some(intersection) = player.rect.intersect(obstacle.rect) {
+          if intersection.w > 0.0 {
+            player.rect.x -= PLAYER_FIX_COLLISION * x as f32 * get_frame_time();
+          }
+          if intersection.h > 0.0 {
+            player.rect.y -= PLAYER_FIX_COLLISION * y as f32 * get_frame_time();
+          }
+        }
+      }
+
       camera.target = player.rect.center();
 
       if trigger_powerup && player.powerup_cooldown_timer <= 0.0 {
