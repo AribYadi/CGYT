@@ -5,7 +5,8 @@ fn window_conf() -> Conf {
   Conf { window_title: "Game Off 2022".to_string(), ..Default::default() }
 }
 
-const PLAYER_SIZE: f32 = 32.0;
+const PLAYER_WIDTH: f32 = 86.0;
+const PLAYER_HEIGHT: f32 = 105.0;
 const PLAYER_SPEED: f32 = 160.0;
 const PLAYER_SPEED_UP_TIME: f32 = 2.0;
 const PLAYER_SPEED_UP_SPEED: f32 = 256.0;
@@ -13,11 +14,15 @@ const PLAYER_NO_STUN_TIME: f32 = 4.0;
 const PLAYER_POWERUP_COOLDOWN: f32 = 6.0;
 const FIX_COLLISION: f32 = 5.0;
 
-const TONGUE_SIZE: f32 = 24.0;
+const TONGUE_WIDTH: f32 = 82.0;
+const TONGUE_HEIGHT: f32 = 61.0;
 const TONGUE_SPEED: f32 = 120.0;
 const TONGUE_MAX_DEST: f32 = 120.0;
 
-const CAT_SIZE: f32 = 28.0;
+const CAT_ATTACKER_WIDTH: f32 = 113.0;
+const CAT_ATTACKER_HEIGHT: f32 = 105.0;
+const CAT_DEFENDER_WIDTH: f32 = 120.0;
+const CAT_DEFENDER_HEIGHT: f32 = 104.0;
 const CAT_SPEED: f32 = 140.0;
 const CAT_PROXIMITY: f32 = 112.0;
 const CAT_MAX_DEST: f32 = 140.0;
@@ -31,6 +36,15 @@ enum GameState {
   Won,
   Playing,
   Lose,
+}
+
+struct TextureManager {
+  cat_grey: Texture2D,
+  cat_orange: Texture2D,
+  cobblestone: Texture2D,
+  skull_closed: Texture2D,
+  skull_open: Texture2D,
+  tongue: Texture2D,
 }
 
 #[derive(Component)]
@@ -69,6 +83,7 @@ impl Pathfinder {
 #[derive(Component)]
 struct Player {
   rect: Rect,
+  dir_x: f32,
   stun_timer: f32,
   powerup_timer: f32,
   powerup_kind: PowerUpKind,
@@ -84,11 +99,13 @@ enum PowerUpKind {
 #[derive(Component)]
 struct Tongue {
   rect: Rect,
+  dir_x: f32,
 }
 
 #[derive(Component)]
 struct Cat {
   rect: Rect,
+  dir_x: f32,
   kind: CatKind,
 }
 
@@ -104,10 +121,7 @@ struct Obstacle {
 }
 
 // TODO
-fn won(mut bg_color: ResMut<Color>, mut game_state: ResMut<State<GameState>>) {
-  *bg_color = DARKGREEN;
-  let _ = game_state.set(GameState::Playing);
-}
+fn won(mut game_state: ResMut<State<GameState>>) { let _ = game_state.set(GameState::Playing); }
 
 fn despawn_all(mut commands: Commands, entities: Query<Entity>) {
   for entity in &entities {
@@ -118,11 +132,12 @@ fn despawn_all(mut commands: Commands, entities: Query<Entity>) {
 fn spawn_player(mut commands: Commands) {
   commands.spawn().insert(Player {
     rect: Rect::new(
-      screen_width() / 2.0 - PLAYER_SIZE / 2.0,
-      screen_height() / 2.0 - PLAYER_SIZE / 2.0,
-      PLAYER_SIZE,
-      PLAYER_SIZE,
+      screen_width() / 2.0 - PLAYER_WIDTH / 2.0,
+      screen_height() / 2.0 - PLAYER_HEIGHT / 2.0,
+      PLAYER_WIDTH,
+      PLAYER_HEIGHT,
     ),
+    dir_x: 0.0,
     stun_timer: 0.0,
     powerup_timer: 0.0,
     powerup_kind: PowerUpKind::NoStun,
@@ -134,7 +149,8 @@ fn spawn_tongue(mut commands: Commands) {
   commands
     .spawn()
     .insert(Tongue {
-      rect: Rect::new(screen_width() - TONGUE_SIZE / 2.0, 0.0, TONGUE_SIZE, TONGUE_SIZE),
+      rect: Rect::new(screen_width() - TONGUE_WIDTH / 2.0, 0.0, TONGUE_WIDTH, TONGUE_HEIGHT),
+      dir_x: 0.0,
     })
     .insert(Pathfinder {});
 }
@@ -144,34 +160,45 @@ fn spawn_cat(mut commands: Commands) {
     .spawn()
     .insert(Cat {
       rect: Rect::new(
-        screen_width() - CAT_SIZE / 2.0,
-        screen_height() - CAT_SIZE / 2.0,
-        CAT_SIZE,
-        CAT_SIZE,
+        screen_width() - CAT_ATTACKER_WIDTH / 2.0,
+        screen_height() - CAT_ATTACKER_HEIGHT / 2.0,
+        CAT_ATTACKER_WIDTH,
+        CAT_ATTACKER_HEIGHT,
       ),
+      dir_x: 0.0,
       kind: CatKind::Attacker,
     })
     .insert(Pathfinder {});
   commands
     .spawn()
-    .insert(Cat { rect: Rect::new(0.0, 0.0, CAT_SIZE, CAT_SIZE), kind: CatKind::Attacker })
+    .insert(Cat {
+      rect: Rect::new(0.0, 0.0, CAT_ATTACKER_WIDTH, CAT_ATTACKER_HEIGHT),
+      dir_x: 0.0,
+      kind: CatKind::Attacker,
+    })
     .insert(Pathfinder {});
   commands
     .spawn()
     .insert(Cat {
-      rect: Rect::new(0.0, screen_height() - CAT_SIZE / 2.0, CAT_SIZE, CAT_SIZE),
+      rect: Rect::new(
+        0.0,
+        screen_height() - CAT_DEFENDER_WIDTH / 2.0,
+        CAT_DEFENDER_WIDTH,
+        CAT_DEFENDER_HEIGHT,
+      ),
+      dir_x: 0.0,
       kind: CatKind::Defender,
     })
     .insert(Pathfinder {});
 }
 
 fn spawn_obstacle(mut commands: Commands) {
-  commands
-    .spawn()
-    .insert(Obstacle {
-      rect: Rect::new(screen_width() + 100.0, -100.0, OBSTACLE_SIZE, OBSTACLE_SIZE),
-    })
-    .insert(Pathfinder {});
+  // commands
+  // .spawn()
+  // .insert(Obstacle {
+  // rect: Rect::new(screen_width() + 100.0, -100.0, OBSTACLE_SIZE,
+  // OBSTACLE_SIZE), })
+  // .insert(Pathfinder {});
 }
 
 fn control_player(
@@ -187,6 +214,10 @@ fn control_player(
 
   for mut player in &mut players {
     if player.stun_timer <= 0.0 {
+      if x != 0 {
+        player.dir_x = x as f32;
+      }
+
       let speed = if player.powerup_kind == PowerUpKind::SpeedUp && player.powerup_timer > 0.0 {
         PLAYER_SPEED_UP_SPEED
       } else {
@@ -248,6 +279,7 @@ fn move_tongue(
       dir += (cat.rect.point() - tongue.rect.point()).normalize_or_zero();
     }
     dir = Vec2::ZERO - dir.normalize_or_zero();
+    tongue.dir_x = dir.x;
     let dest = tongue.rect.point() + dir * TONGUE_MAX_DEST;
 
     pathfinder.update_pos(&mut tongue.rect, TONGUE_SPEED, dest, &obstacles);
@@ -278,8 +310,8 @@ fn move_cat(
 ) {
   for (mut cat, mut pathfinder) in &mut cats {
     let proximity = Rect::new(
-      cat.rect.x + CAT_SIZE / 2.0 - CAT_PROXIMITY,
-      cat.rect.y + CAT_SIZE / 2.0 - CAT_PROXIMITY,
+      cat.rect.x + cat.rect.w / 2.0 - CAT_PROXIMITY,
+      cat.rect.y + cat.rect.h / 2.0 - CAT_PROXIMITY,
       CAT_PROXIMITY * 2.0,
       CAT_PROXIMITY * 2.0,
     );
@@ -294,6 +326,7 @@ fn move_cat(
     };
 
     let dir = (target.point() - cat.rect.point()).normalize_or_zero();
+    cat.dir_x = dir.x;
     let dest = cat.rect.point() + dir * CAT_MAX_DEST;
 
     pathfinder.update_pos(&mut cat.rect, CAT_SPEED, dest, &obstacles);
@@ -320,31 +353,79 @@ fn cat_collision(
   }
 }
 
-fn draw_player(camera: Res<Camera2D>, players: Query<&Player>) {
+fn draw_background(camera: Res<Camera2D>, tm: Res<TextureManager>, players: Query<&Player>) {
+  for player in &players {
+    for i in -1..2 {
+      for j in -1..2 {
+        for y in 0..screen_height() as usize / 128 + 1 {
+          for x in 0..screen_width() as usize / 128 + 1 {
+            let pos = camera.world_to_screen(
+              vec2(x as f32, y as f32) * 128.0
+                + vec2(screen_width(), screen_height())
+                  * (player.rect.center() / vec2(screen_width(), screen_height())).floor(),
+            );
+            draw_texture(
+              tm.cobblestone,
+              pos.x + j as f32 * screen_width(),
+              pos.y + i as f32 * screen_height(),
+              WHITE,
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
+fn draw_player(camera: Res<Camera2D>, tm: Res<TextureManager>, players: Query<&Player>) {
   for player in &players {
     let player_pos = camera.world_to_screen(player.rect.point());
-    draw_rectangle(player_pos.x, player_pos.y, player.rect.w, player.rect.h, GREEN);
+    draw_texture_ex(
+      tm.skull_open,
+      player_pos.x,
+      player_pos.y,
+      WHITE,
+      DrawTextureParams {
+        dest_size: Some(player.rect.size()),
+        flip_x: player.dir_x > 0.0,
+        ..Default::default()
+      },
+    );
   }
 }
 
-fn draw_tongue(camera: Res<Camera2D>, tongues: Query<&Tongue>) {
+fn draw_tongue(camera: Res<Camera2D>, tm: Res<TextureManager>, tongues: Query<&Tongue>) {
   for tongue in &tongues {
     let tongue_pos = camera.world_to_screen(tongue.rect.point());
-    draw_rectangle(tongue_pos.x, tongue_pos.y, tongue.rect.w, tongue.rect.h, RED);
+    draw_texture_ex(
+      tm.tongue,
+      tongue_pos.x,
+      tongue_pos.y,
+      WHITE,
+      DrawTextureParams {
+        dest_size: Some(tongue.rect.size()),
+        flip_x: tongue.dir_x > 0.0,
+        ..Default::default()
+      },
+    );
   }
 }
 
-fn draw_cat(camera: Res<Camera2D>, cats: Query<&Cat>) {
+fn draw_cat(camera: Res<Camera2D>, tm: Res<TextureManager>, cats: Query<&Cat>) {
   for cat in &cats {
     let cat_pos = camera.world_to_screen(cat.rect.point());
-    draw_rectangle(
+    draw_texture_ex(
+      match cat.kind {
+        CatKind::Attacker => tm.cat_grey,
+        CatKind::Defender => tm.cat_orange,
+      },
       cat_pos.x,
       cat_pos.y,
-      cat.rect.w,
-      cat.rect.h,
-      match cat.kind {
-        CatKind::Attacker => YELLOW,
-        CatKind::Defender => GRAY,
+      WHITE,
+      DrawTextureParams {
+        dest_size: Some(cat.rect.size()),
+        flip_x: cat.dir_x > 0.0,
+        ..Default::default()
       },
     );
   }
@@ -358,15 +439,11 @@ fn draw_obstacle(camera: Res<Camera2D>, obstacles: Query<&Obstacle>) {
 }
 
 // TODO
-fn lose(mut bg_color: ResMut<Color>, mut game_state: ResMut<State<GameState>>) {
-  *bg_color = MAROON;
-  let _ = game_state.set(GameState::Playing);
-}
+fn lose(mut game_state: ResMut<State<GameState>>) { let _ = game_state.set(GameState::Playing); }
 
 #[macroquad::main(window_conf)]
 async fn main() {
   let mut world = World::new();
-  world.insert_resource(WHITE);
   world.insert_resource(State::new(GameState::Playing));
   world.insert_resource(Camera2D::from_display_rect(Rect::new(
     0.0,
@@ -374,6 +451,24 @@ async fn main() {
     screen_width(),
     screen_height(),
   )));
+
+  let tm = TextureManager {
+    cat_grey: load_texture("res/cat_grey.png").await.unwrap(),
+    cat_orange: load_texture("res/cat_orange.png").await.unwrap(),
+    cobblestone: load_texture("res/cobblestone.png").await.unwrap(),
+    skull_closed: load_texture("res/skull_closed.png").await.unwrap(),
+    skull_open: load_texture("res/skull_open.png").await.unwrap(),
+    tongue: load_texture("res/tongue.png").await.unwrap(),
+  };
+
+  tm.cat_grey.set_filter(FilterMode::Nearest);
+  tm.cat_orange.set_filter(FilterMode::Nearest);
+  tm.cobblestone.set_filter(FilterMode::Nearest);
+  tm.skull_closed.set_filter(FilterMode::Nearest);
+  tm.skull_open.set_filter(FilterMode::Nearest);
+  tm.tongue.set_filter(FilterMode::Nearest);
+
+  world.insert_resource(tm);
 
   let mut schedule = Schedule::default()
     .with_stage("update", SystemStage::parallel())
@@ -405,17 +500,18 @@ async fn main() {
   schedule.add_system_set_to_stage(
     "late_update",
     SystemSet::on_update(GameState::Playing)
-      .with_system(draw_player)
-      .with_system(draw_tongue)
-      .with_system(draw_cat)
-      .with_system(draw_obstacle),
+      .with_system(draw_background.label("background"))
+      .with_system(draw_player.after("background"))
+      .with_system(draw_tongue.after("background"))
+      .with_system(draw_cat.after("background"))
+      .with_system(draw_obstacle.after("jbackground")),
   );
 
   schedule
     .add_system_set_to_stage("update", SystemSet::on_update(GameState::Lose).with_system(lose));
 
   loop {
-    clear_background(*world.resource());
+    clear_background(BLACK);
 
     schedule.run(&mut world);
 
