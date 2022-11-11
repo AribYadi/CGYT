@@ -90,6 +90,19 @@ struct Player {
   powerup_cooldown_timer: f32,
 }
 
+impl Player {
+  fn new(pos: Vec2, powerup_kind: PowerUpKind) -> Player {
+    Player {
+      rect: Rect::new(pos.x, pos.y, PLAYER_WIDTH, PLAYER_HEIGHT),
+      dir_x: 0.0,
+      stun_timer: 0.0,
+      powerup_timer: 0.0,
+      powerup_kind,
+      powerup_cooldown_timer: 0.0,
+    }
+  }
+}
+
 #[derive(PartialEq)]
 enum PowerUpKind {
   SpeedUp,
@@ -102,11 +115,30 @@ struct Tongue {
   dir_x: f32,
 }
 
+impl Tongue {
+  fn new(pos: Vec2) -> Tongue {
+    Tongue { rect: Rect::new(pos.x, pos.y, TONGUE_WIDTH, TONGUE_HEIGHT), dir_x: 0.0 }
+  }
+}
+
 #[derive(Component)]
 struct Cat {
   rect: Rect,
   dir_x: f32,
   kind: CatKind,
+}
+
+impl Cat {
+  fn new(pos: Vec2, kind: CatKind) -> Cat {
+    Cat {
+      rect: match kind {
+        CatKind::Attacker => Rect::new(pos.x, pos.y, CAT_ATTACKER_WIDTH, CAT_ATTACKER_HEIGHT),
+        CatKind::Defender => Rect::new(pos.x, pos.y, CAT_DEFENDER_WIDTH, CAT_DEFENDER_HEIGHT),
+      },
+      dir_x: 0.0,
+      kind,
+    }
+  }
 }
 
 #[derive(PartialEq)]
@@ -120,6 +152,12 @@ struct Obstacle {
   rect: Rect,
 }
 
+impl Obstacle {
+  fn new(pos: Vec2) -> Obstacle {
+    Obstacle { rect: Rect::new(pos.x, pos.y, OBSTACLE_SIZE, OBSTACLE_SIZE) }
+  }
+}
+
 // TODO
 fn won(mut game_state: ResMut<State<GameState>>) { let _ = game_state.set(GameState::Playing); }
 
@@ -130,65 +168,30 @@ fn despawn_all(mut commands: Commands, entities: Query<Entity>) {
 }
 
 fn spawn_player(mut commands: Commands) {
-  commands.spawn().insert(Player {
-    rect: Rect::new(
-      screen_width() / 2.0 - PLAYER_WIDTH / 2.0,
-      screen_height() / 2.0 - PLAYER_HEIGHT / 2.0,
-      PLAYER_WIDTH,
-      PLAYER_HEIGHT,
-    ),
-    dir_x: 0.0,
-    stun_timer: 0.0,
-    powerup_timer: 0.0,
-    powerup_kind: PowerUpKind::NoStun,
-    powerup_cooldown_timer: 0.0,
-  });
+  commands
+    .spawn()
+    .insert(Player::new(vec2(screen_width(), screen_width()) / 2.0, PowerUpKind::SpeedUp));
 }
 
 fn spawn_tongue(mut commands: Commands) {
   commands
     .spawn()
-    .insert(Tongue {
-      rect: Rect::new(screen_width() - TONGUE_WIDTH / 2.0, 0.0, TONGUE_WIDTH, TONGUE_HEIGHT),
-      dir_x: 0.0,
-    })
+    .insert(Tongue::new(vec2(screen_width() - TONGUE_WIDTH / 2.0, 0.0)))
     .insert(Pathfinder {});
 }
 
 fn spawn_cat(mut commands: Commands) {
   commands
     .spawn()
-    .insert(Cat {
-      rect: Rect::new(
-        screen_width() - CAT_ATTACKER_WIDTH / 2.0,
-        screen_height() - CAT_ATTACKER_HEIGHT / 2.0,
-        CAT_ATTACKER_WIDTH,
-        CAT_ATTACKER_HEIGHT,
-      ),
-      dir_x: 0.0,
-      kind: CatKind::Attacker,
-    })
+    .insert(Cat::new(
+      vec2(screen_width() - CAT_ATTACKER_WIDTH / 2.0, screen_height() - CAT_ATTACKER_HEIGHT / 2.0),
+      CatKind::Attacker,
+    ))
     .insert(Pathfinder {});
+  commands.spawn().insert(Cat::new(vec2(0.0, 0.0), CatKind::Attacker)).insert(Pathfinder {});
   commands
     .spawn()
-    .insert(Cat {
-      rect: Rect::new(0.0, 0.0, CAT_ATTACKER_WIDTH, CAT_ATTACKER_HEIGHT),
-      dir_x: 0.0,
-      kind: CatKind::Attacker,
-    })
-    .insert(Pathfinder {});
-  commands
-    .spawn()
-    .insert(Cat {
-      rect: Rect::new(
-        0.0,
-        screen_height() - CAT_DEFENDER_WIDTH / 2.0,
-        CAT_DEFENDER_WIDTH,
-        CAT_DEFENDER_HEIGHT,
-      ),
-      dir_x: 0.0,
-      kind: CatKind::Defender,
-    })
+    .insert(Cat::new(vec2(0.0, screen_height() - CAT_DEFENDER_WIDTH / 2.0), CatKind::Defender))
     .insert(Pathfinder {});
 }
 
