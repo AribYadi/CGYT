@@ -13,6 +13,7 @@ const PLAYER_SPEED_UP_SPEED: f32 = 256.0;
 const PLAYER_NO_STUN_TIME: f32 = 4.0;
 const PLAYER_POWERUP_COOLDOWN: f32 = 6.0;
 const FIX_COLLISION: f32 = 5.0;
+const PLAYER_ANIMATION_FPS: f32 = 1.0 / 4.0;
 
 const TONGUE_WIDTH: f32 = 82.0;
 const TONGUE_HEIGHT: f32 = 61.0;
@@ -88,6 +89,8 @@ struct Player {
   powerup_timer: f32,
   powerup_kind: PowerUpKind,
   powerup_cooldown_timer: f32,
+  animation_timer: f32,
+  current_frame: usize,
 }
 
 impl Player {
@@ -99,6 +102,8 @@ impl Player {
       powerup_timer: 0.0,
       powerup_kind,
       powerup_cooldown_timer: 0.0,
+      animation_timer: PLAYER_ANIMATION_FPS,
+      current_frame: 0,
     }
   }
 }
@@ -195,7 +200,7 @@ fn spawn_cat(mut commands: Commands) {
     .insert(Pathfinder {});
 }
 
-fn spawn_obstacle(mut commands: Commands) {
+fn spawn_obstacle(mut _commands: Commands) {
   // commands
   // .spawn()
   // .insert(Obstacle {
@@ -267,6 +272,18 @@ fn control_player(
     }
     if player.powerup_timer > 0.0 {
       player.powerup_timer -= get_frame_time();
+    }
+  }
+}
+
+fn animate_player(mut players: Query<&mut Player>) {
+  for mut player in &mut players {
+    if player.stun_timer <= 0.0 {
+      player.animation_timer -= get_frame_time();
+      if player.animation_timer <= 0.0 {
+        player.animation_timer = PLAYER_ANIMATION_FPS;
+        player.current_frame = 1 - player.current_frame;
+      }
     }
   }
 }
@@ -384,7 +401,11 @@ fn draw_player(camera: Res<Camera2D>, tm: Res<TextureManager>, players: Query<&P
   for player in &players {
     let player_pos = camera.world_to_screen(player.rect.point());
     draw_texture_ex(
-      tm.skull_open,
+      match player.current_frame {
+        0 => tm.skull_open,
+        1 => tm.skull_closed,
+        _ => unreachable!(),
+      },
       player_pos.x,
       player_pos.y,
       WHITE,
@@ -495,6 +516,7 @@ async fn main() {
     "update",
     SystemSet::on_update(GameState::Playing)
       .with_system(control_player)
+      .with_system(animate_player)
       .with_system(move_tongue)
       .with_system(tongue_collision)
       .with_system(move_cat)
