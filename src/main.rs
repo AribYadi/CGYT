@@ -24,11 +24,16 @@ const CAT_ATTACKER_WIDTH: f32 = 113.0;
 const CAT_ATTACKER_HEIGHT: f32 = 105.0;
 const CAT_DEFENDER_WIDTH: f32 = 120.0;
 const CAT_DEFENDER_HEIGHT: f32 = 104.0;
+const CAT_SLOWING_WIDTH: f32 = 116.0;
+const CAT_SLOWING_HEIGHT: f32 = 104.0;
 const CAT_SPEED: f32 = 140.0;
-const CAT_PROXIMITY: f32 = 112.0;
+const CAT_DEFENDER_PROXIMITY: f32 = 112.0;
+const CAT_SLOWING_PROXIMITY: f32 = 224.0;
 const CAT_MAX_DEST: f32 = 140.0;
 const CAT_ATTACKER_STUN_TIME: f32 = 0.2;
 const CAT_DEFENDER_STUN_TIME: f32 = 1.0;
+const CAT_SLOWING_STUN_TIME: f32 = 0.5;
+const CAT_SLOWING_MUL: f32 = 0.5;
 
 const OBSTACLE_SIZE: f32 = 128.0;
 
@@ -40,6 +45,7 @@ enum GameState {
 }
 
 struct TextureManager {
+  cat_black: Texture2D,
   cat_grey: Texture2D,
   cat_orange: Texture2D,
   cobblestone: Texture2D,
@@ -91,6 +97,7 @@ struct Player {
   powerup_cooldown_timer: f32,
   animation_timer: f32,
   current_frame: usize,
+  speed_mul: f32,
 }
 
 impl Player {
@@ -104,6 +111,7 @@ impl Player {
       powerup_cooldown_timer: 0.0,
       animation_timer: PLAYER_ANIMATION_FPS,
       current_frame: 0,
+      speed_mul: 1.0,
     }
   }
 }
@@ -139,6 +147,7 @@ impl Cat {
       rect: match kind {
         CatKind::Attacker => Rect::new(pos.x, pos.y, CAT_ATTACKER_WIDTH, CAT_ATTACKER_HEIGHT),
         CatKind::Defender => Rect::new(pos.x, pos.y, CAT_DEFENDER_WIDTH, CAT_DEFENDER_HEIGHT),
+        CatKind::Slowing => Rect::new(pos.x, pos.y, CAT_SLOWING_WIDTH, CAT_SLOWING_HEIGHT),
       },
       dir_x: 0.0,
       kind,
@@ -150,6 +159,7 @@ impl Cat {
 enum CatKind {
   Attacker,
   Defender,
+  Slowing,
 }
 
 #[derive(Component)]
@@ -193,7 +203,7 @@ fn spawn_cat(mut commands: Commands) {
       CatKind::Attacker,
     ))
     .insert(Pathfinder {});
-  commands.spawn().insert(Cat::new(vec2(0.0, 0.0), CatKind::Attacker)).insert(Pathfinder {});
+  commands.spawn().insert(Cat::new(vec2(0.0, 0.0), CatKind::Slowing)).insert(Pathfinder {});
   commands
     .spawn()
     .insert(Cat::new(vec2(0.0, screen_height() - CAT_DEFENDER_WIDTH / 2.0), CatKind::Defender))
@@ -230,7 +240,7 @@ fn control_player(
         PLAYER_SPEED_UP_SPEED
       } else {
         PLAYER_SPEED
-      };
+      } * player.speed_mul;
 
       player.rect.x += speed * x as f32 * get_frame_time();
       player.rect.y += speed * y as f32 * get_frame_time();
@@ -281,7 +291,7 @@ fn animate_player(mut players: Query<&mut Player>) {
     if player.stun_timer <= 0.0 {
       player.animation_timer -= get_frame_time();
       if player.animation_timer <= 0.0 {
-        player.animation_timer = PLAYER_ANIMATION_FPS;
+        player.animation_timer = PLAYER_ANIMATION_FPS / player.speed_mul;
         player.current_frame = 1 - player.current_frame;
       }
     }
@@ -325,19 +335,38 @@ fn tongue_collision(
 fn move_cat(
   mut cats: Query<(&mut Cat, &mut Pathfinder)>,
   tongues: Query<&Tongue>,
-  players: Query<&Player>,
+  mut players: Query<&mut Player>,
   obstacles: Query<&Obstacle>,
 ) {
+  let mut player = players.single_mut();
+  let mut player_slowed = false;
+
   for (mut cat, mut pathfinder) in &mut cats {
+    let proximity_range = match cat.kind {
+      CatKind::Attacker => 0.0,
+      CatKind::Defender => CAT_DEFENDER_PROXIMITY,
+      CatKind::Slowing => CAT_SLOWING_PROXIMITY,
+    };
+
     let proximity = Rect::new(
-      cat.rect.x + cat.rect.w / 2.0 - CAT_PROXIMITY,
-      cat.rect.y + cat.rect.h / 2.0 - CAT_PROXIMITY,
-      CAT_PROXIMITY * 2.0,
-      CAT_PROXIMITY * 2.0,
+      cat.rect.x + cat.rect.w / 2.0 - proximity_range,
+      cat.rect.y + cat.rect.h / 2.0 - proximity_range,
+      proximity_range * 2.0,
+      proximity_range * 2.0,
     );
-    let player = players.single();
 
     let is_player_near = proximity.overlaps(&player.rect);
+
+    match cat.kind {
+      CatKind::Attacker => (),
+      CatKind::Defender => (),
+      CatKind::Slowing => {
+        if is_player_near {
+          player.speed_mul = CAT_SLOWING_MUL;
+          player_slowed = true;
+        }
+      },
+    }
 
     let target = if cat.kind == CatKind::Defender && is_player_near {
       player.rect
@@ -350,6 +379,10 @@ fn move_cat(
     let dest = cat.rect.point() + dir * CAT_MAX_DEST;
 
     pathfinder.update_pos(&mut cat.rect, CAT_SPEED, dest, &obstacles);
+  }
+
+  if !player_slowed {
+    player.speed_mul = 1.0;
   }
 }
 
@@ -366,6 +399,7 @@ fn cat_collision(
           player.stun_timer = match cat.kind {
             CatKind::Attacker => CAT_ATTACKER_STUN_TIME,
             CatKind::Defender => CAT_DEFENDER_STUN_TIME,
+            CatKind::Slowing => CAT_SLOWING_STUN_TIME,
           };
         }
       }
@@ -442,6 +476,7 @@ fn draw_cat(camera: Res<Camera2D>, tm: Res<TextureManager>, cats: Query<&Cat>) {
       match cat.kind {
         CatKind::Attacker => tm.cat_grey,
         CatKind::Defender => tm.cat_orange,
+        CatKind::Slowing => tm.cat_black,
       },
       cat_pos.x,
       cat_pos.y,
@@ -477,6 +512,7 @@ async fn main() {
   )));
 
   let tm = TextureManager {
+    cat_black: load_texture("res/cat_black.png").await.unwrap(),
     cat_grey: load_texture("res/cat_grey.png").await.unwrap(),
     cat_orange: load_texture("res/cat_orange.png").await.unwrap(),
     cobblestone: load_texture("res/cobblestone.png").await.unwrap(),
@@ -485,6 +521,7 @@ async fn main() {
     tongue: load_texture("res/tongue.png").await.unwrap(),
   };
 
+  tm.cat_black.set_filter(FilterMode::Nearest);
   tm.cat_grey.set_filter(FilterMode::Nearest);
   tm.cat_orange.set_filter(FilterMode::Nearest);
   tm.cobblestone.set_filter(FilterMode::Nearest);
