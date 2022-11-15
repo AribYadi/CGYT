@@ -27,7 +27,7 @@ const CAT_DEFENDER_HEIGHT: f32 = 104.0;
 const CAT_SLOWING_WIDTH: f32 = 116.0;
 const CAT_SLOWING_HEIGHT: f32 = 104.0;
 const CAT_SPEED: f32 = 140.0;
-const CAT_DEFENDER_PROXIMITY: f32 = 112.0;
+const CAT_DEFENDER_PROXIMITY: f32 = 152.0;
 const CAT_SLOWING_PROXIMITY: f32 = 224.0;
 const CAT_MAX_DEST: f32 = 140.0;
 const CAT_ATTACKER_STUN_TIME: f32 = 0.2;
@@ -35,7 +35,9 @@ const CAT_DEFENDER_STUN_TIME: f32 = 1.0;
 const CAT_SLOWING_STUN_TIME: f32 = 0.5;
 const CAT_SLOWING_MUL: f32 = 0.5;
 
-const OBSTACLE_SIZE: f32 = 128.0;
+const OBSTACLE_MANEKI_WIDTH: f32 = 78.0;
+const OBSTACLE_MANEKI_HEIGHT: f32 = 115.0;
+const OBSTACLE_MANEKI_PROXIMITY: f32 = 192.0;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum GameState {
@@ -49,6 +51,7 @@ struct TextureManager {
   cat_grey: Texture2D,
   cat_orange: Texture2D,
   cobblestone: Texture2D,
+  manekineko: Texture2D,
   skull_closed: Texture2D,
   skull_open: Texture2D,
   tongue: Texture2D,
@@ -139,6 +142,7 @@ struct Cat {
   rect: Rect,
   dir_x: f32,
   kind: CatKind,
+  speed_mul: f32,
 }
 
 impl Cat {
@@ -151,6 +155,7 @@ impl Cat {
       },
       dir_x: 0.0,
       kind,
+      speed_mul: 1.0,
     }
   }
 }
@@ -165,12 +170,25 @@ enum CatKind {
 #[derive(Component)]
 struct Obstacle {
   rect: Rect,
+  kind: ObstacleKind,
 }
 
 impl Obstacle {
-  fn new(pos: Vec2) -> Obstacle {
-    Obstacle { rect: Rect::new(pos.x, pos.y, OBSTACLE_SIZE, OBSTACLE_SIZE) }
+  fn new(pos: Vec2, kind: ObstacleKind) -> Obstacle {
+    Obstacle {
+      rect: match kind {
+        ObstacleKind::Maneki => {
+          Rect::new(pos.x, pos.y, OBSTACLE_MANEKI_WIDTH, OBSTACLE_MANEKI_HEIGHT)
+        },
+      },
+      kind,
+    }
   }
+}
+
+#[derive(PartialEq)]
+enum ObstacleKind {
+  Maneki,
 }
 
 // TODO
@@ -210,13 +228,10 @@ fn spawn_cat(mut commands: Commands) {
     .insert(Pathfinder {});
 }
 
-fn spawn_obstacle(mut _commands: Commands) {
-  // commands
-  // .spawn()
-  // .insert(Obstacle {
-  // rect: Rect::new(screen_width() + 100.0, -100.0, OBSTACLE_SIZE,
-  // OBSTACLE_SIZE), })
-  // .insert(Pathfinder {});
+fn spawn_obstacle(mut commands: Commands) {
+  commands
+    .spawn()
+    .insert(Obstacle::new(vec2(screen_width() + 100.0, -100.0), ObstacleKind::Maneki));
 }
 
 fn control_player(
@@ -338,51 +353,53 @@ fn move_cat(
   mut players: Query<&mut Player>,
   obstacles: Query<&Obstacle>,
 ) {
-  let mut player = players.single_mut();
-  let mut player_slowed = false;
+  for mut player in &mut players {
+    let mut player_slowed = false;
 
-  for (mut cat, mut pathfinder) in &mut cats {
-    let proximity_range = match cat.kind {
-      CatKind::Attacker => 0.0,
-      CatKind::Defender => CAT_DEFENDER_PROXIMITY,
-      CatKind::Slowing => CAT_SLOWING_PROXIMITY,
-    };
+    for (mut cat, mut pathfinder) in &mut cats {
+      let proximity_range = match cat.kind {
+        CatKind::Attacker => 0.0,
+        CatKind::Defender => CAT_DEFENDER_PROXIMITY,
+        CatKind::Slowing => CAT_SLOWING_PROXIMITY,
+      };
 
-    let proximity = Rect::new(
-      cat.rect.x + cat.rect.w / 2.0 - proximity_range,
-      cat.rect.y + cat.rect.h / 2.0 - proximity_range,
-      proximity_range * 2.0,
-      proximity_range * 2.0,
-    );
+      let proximity = Rect::new(
+        cat.rect.x + cat.rect.w / 2.0 - proximity_range,
+        cat.rect.y + cat.rect.h / 2.0 - proximity_range,
+        proximity_range * 2.0,
+        proximity_range * 2.0,
+      );
 
-    let is_player_near = proximity.overlaps(&player.rect);
+      let is_player_near = proximity.overlaps(&player.rect);
 
-    match cat.kind {
-      CatKind::Attacker => (),
-      CatKind::Defender => (),
-      CatKind::Slowing => {
-        if is_player_near {
-          player.speed_mul = CAT_SLOWING_MUL;
-          player_slowed = true;
-        }
-      },
+      match cat.kind {
+        CatKind::Attacker => (),
+        CatKind::Defender => (),
+        CatKind::Slowing => {
+          if is_player_near {
+            player.speed_mul = CAT_SLOWING_MUL;
+            player_slowed = true;
+          }
+        },
+      }
+
+      let target = if cat.kind == CatKind::Defender && is_player_near {
+        player.rect
+      } else {
+        tongues.single().rect
+      };
+
+      let dir = (target.point() - cat.rect.point()).normalize_or_zero();
+      cat.dir_x = dir.x;
+      let dest = cat.rect.point() + dir * CAT_MAX_DEST;
+
+      let speed_mul = cat.speed_mul;
+      pathfinder.update_pos(&mut cat.rect, CAT_SPEED * speed_mul, dest, &obstacles);
     }
 
-    let target = if cat.kind == CatKind::Defender && is_player_near {
-      player.rect
-    } else {
-      tongues.single().rect
-    };
-
-    let dir = (target.point() - cat.rect.point()).normalize_or_zero();
-    cat.dir_x = dir.x;
-    let dest = cat.rect.point() + dir * CAT_MAX_DEST;
-
-    pathfinder.update_pos(&mut cat.rect, CAT_SPEED, dest, &obstacles);
-  }
-
-  if !player_slowed {
-    player.speed_mul = 1.0;
+    if !player_slowed {
+      player.speed_mul = 1.0;
+    }
   }
 }
 
@@ -403,6 +420,35 @@ fn cat_collision(
           };
         }
       }
+    }
+  }
+}
+
+fn obstacle_maneki_update(obstacles: Query<&Obstacle>, mut cats: Query<&mut Cat>) {
+  for mut cat in &mut cats {
+    let mut cat_slowed = false;
+
+    for obstacle in &obstacles {
+      match obstacle.kind {
+        ObstacleKind::Maneki => {
+          let proximity = Rect::new(
+            obstacle.rect.x + obstacle.rect.w / 2.0 - OBSTACLE_MANEKI_PROXIMITY,
+            obstacle.rect.y + obstacle.rect.h / 2.0 - OBSTACLE_MANEKI_PROXIMITY,
+            OBSTACLE_MANEKI_PROXIMITY * 2.0,
+            OBSTACLE_MANEKI_PROXIMITY * 2.0,
+          );
+
+          let is_cat_near = proximity.overlaps(&cat.rect);
+          if is_cat_near {
+            cat.speed_mul = 1.5;
+            cat_slowed = true;
+          }
+        },
+      }
+    }
+
+    if !cat_slowed {
+      cat.speed_mul = 1.0;
     }
   }
 }
@@ -490,10 +536,18 @@ fn draw_cat(camera: Res<Camera2D>, tm: Res<TextureManager>, cats: Query<&Cat>) {
   }
 }
 
-fn draw_obstacle(camera: Res<Camera2D>, obstacles: Query<&Obstacle>) {
+fn draw_obstacle(camera: Res<Camera2D>, tm: Res<TextureManager>, obstacles: Query<&Obstacle>) {
   for obstacle in &obstacles {
     let obstacle_pos = camera.world_to_screen(obstacle.rect.point());
-    draw_rectangle(obstacle_pos.x, obstacle_pos.y, obstacle.rect.w, obstacle.rect.h, BROWN);
+    draw_texture_ex(
+      match obstacle.kind {
+        ObstacleKind::Maneki => tm.manekineko,
+      },
+      obstacle_pos.x,
+      obstacle_pos.y,
+      WHITE,
+      DrawTextureParams { dest_size: Some(obstacle.rect.size()), ..Default::default() },
+    );
   }
 }
 
@@ -516,6 +570,7 @@ async fn main() {
     cat_grey: load_texture("res/cat_grey.png").await.unwrap(),
     cat_orange: load_texture("res/cat_orange.png").await.unwrap(),
     cobblestone: load_texture("res/cobblestone.png").await.unwrap(),
+    manekineko: load_texture("res/manekineko.png").await.unwrap(),
     skull_closed: load_texture("res/skull_closed.png").await.unwrap(),
     skull_open: load_texture("res/skull_open.png").await.unwrap(),
     tongue: load_texture("res/tongue.png").await.unwrap(),
@@ -525,6 +580,7 @@ async fn main() {
   tm.cat_grey.set_filter(FilterMode::Nearest);
   tm.cat_orange.set_filter(FilterMode::Nearest);
   tm.cobblestone.set_filter(FilterMode::Nearest);
+  tm.manekineko.set_filter(FilterMode::Nearest);
   tm.skull_closed.set_filter(FilterMode::Nearest);
   tm.skull_open.set_filter(FilterMode::Nearest);
   tm.tongue.set_filter(FilterMode::Nearest);
@@ -557,7 +613,8 @@ async fn main() {
       .with_system(move_tongue)
       .with_system(tongue_collision)
       .with_system(move_cat)
-      .with_system(cat_collision),
+      .with_system(cat_collision)
+      .with_system(obstacle_maneki_update),
   );
   schedule.add_system_set_to_stage(
     "late_update",
@@ -566,7 +623,7 @@ async fn main() {
       .with_system(draw_player.after("background"))
       .with_system(draw_tongue.after("background"))
       .with_system(draw_cat.after("background"))
-      .with_system(draw_obstacle.after("jbackground")),
+      .with_system(draw_obstacle.after("background")),
   );
 
   schedule
