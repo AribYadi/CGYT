@@ -277,11 +277,7 @@ fn spawn_obstacle(mut commands: Commands) {
     .insert(Obstacle::new(vec2(screen_width() + 100.0, -100.0), ObstacleKind::Maneki));
 }
 
-fn control_player(
-  mut players: Query<&mut Player>,
-  mut camera: ResMut<Camera2D>,
-  obstacles: Query<&Obstacle>,
-) {
+fn control_player(mut players: Query<&mut Player>, obstacles: Query<&Obstacle>) {
   let x = (is_key_down(KeyCode::D) || is_key_down(KeyCode::Right)) as i32
     - (is_key_down(KeyCode::A) || is_key_down(KeyCode::Left)) as i32;
   let y = (is_key_down(KeyCode::S) || is_key_down(KeyCode::Down)) as i32
@@ -323,8 +319,6 @@ fn control_player(
           player.rect.x -= speed * x as f32 * get_frame_time();
         }
       }
-
-      camera.target = player.rect.center();
 
       if trigger_powerup && player.powerup_cooldown_timer <= 0.0 {
         player.powerup_timer = match player.powerup_kind {
@@ -517,6 +511,11 @@ fn obstacle_maneki_update(obstacles: Query<&Obstacle>, mut cats: Query<&mut Cat>
   }
 }
 
+fn update_camera(mut camera: ResMut<Camera2D>, players: Query<&Player>) {
+  *camera = Camera2D::from_display_rect(Rect::new(0.0, 0.0, screen_width(), screen_height()));
+  camera.target = players.single().rect.center();
+}
+
 fn draw_background(camera: Res<Camera2D>, tm: Res<TextureManager>, players: Query<&Player>) {
   for player in &players {
     for i in -1..2 {
@@ -662,6 +661,10 @@ async fn main() {
   );
   schedule.add_system_set_to_stage(
     "update",
+    SystemSet::on_update(GameState::MainMenu).with_system(update_camera),
+  );
+  schedule.add_system_set_to_stage(
+    "late_update",
     SystemSet::on_update(GameState::MainMenu)
       .with_system(draw_background.label("background"))
       .with_system(darken_background.label("darken_background").after("background"))
@@ -669,7 +672,7 @@ async fn main() {
   );
 
   schedule.add_system_set_to_stage(
-    "update",
+    "late_update",
     SystemSet::on_enter(GameState::Playing)
       .with_system(despawn_all)
       .with_system(spawn_player)
@@ -687,7 +690,8 @@ async fn main() {
       .with_system(tongue_collision)
       .with_system(move_cat)
       .with_system(cat_collision)
-      .with_system(obstacle_maneki_update),
+      .with_system(obstacle_maneki_update)
+      .with_system(update_camera),
   );
   schedule.add_system_set_to_stage(
     "late_update",
