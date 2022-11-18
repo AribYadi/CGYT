@@ -41,10 +41,11 @@ const OBSTACLE_MANEKI_PROXIMITY: f32 = 192.0;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum GameState {
-  Won,
+  MainMenu,
   Playing,
-  Lose,
 }
+
+struct Exit(bool);
 
 struct TextureManager {
   cat_black: Texture2D,
@@ -195,8 +196,46 @@ enum ObstacleKind {
   Maneki,
 }
 
-// TODO
-fn won(mut game_state: ResMut<State<GameState>>) { let _ = game_state.set(GameState::Playing); }
+fn darken_background() {
+  draw_rectangle(0.0, 0.0, screen_width(), screen_height(), color_u8!(0, 0, 0, 100));
+}
+
+fn main_menu(mut exit: ResMut<Exit>, mut game_state: ResMut<State<GameState>>) {
+  let mouse_pointer: Vec2 = mouse_position().into();
+
+  let play_button = Rect::new(screen_width() / 2.0 - 250.0, screen_height() - 175.0, 500.0, 50.0);
+  draw_rectangle(play_button.x, play_button.y, play_button.w, play_button.h, WHITE);
+
+  let text_measure = measure_text("Play", None, 40, 1.0);
+  draw_text(
+    "Play",
+    play_button.center().x - text_measure.width / 2.0,
+    play_button.center().y + text_measure.offset_y / 2.0,
+    40.0,
+    BLACK,
+  );
+
+  if play_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
+    let _ = game_state.set(GameState::Playing);
+  }
+
+  let exit_button = Rect::new(screen_width() / 2.0 - 250.0, screen_height() - 100.0, 500.0, 50.0);
+  draw_rectangle(exit_button.x, exit_button.y, exit_button.w, exit_button.h, WHITE);
+
+  let text_measure = measure_text("Exit", None, 40, 1.0);
+  draw_text(
+    "Exit",
+    exit_button.center().x - text_measure.width / 2.0,
+    exit_button.center().y + text_measure.offset_y / 2.0,
+    40.0,
+    BLACK,
+  );
+
+  #[cfg(not(target_arch = "wasm32"))]
+  if exit_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
+    *exit = Exit(true);
+  }
+}
 
 fn despawn_all(mut commands: Commands, entities: Query<Entity>) {
   for entity in &entities {
@@ -365,10 +404,10 @@ fn tongue_collision(
 ) {
   for tongue in &tongues {
     if players.iter().any(|player| player.rect.overlaps(&tongue.rect)) {
-      let _ = game_state.set(GameState::Won);
+      let _ = game_state.set(GameState::MainMenu);
     }
     if cats.iter().any(|player| player.rect.overlaps(&tongue.rect)) {
-      let _ = game_state.set(GameState::Lose);
+      let _ = game_state.restart();
     }
   }
 }
@@ -576,13 +615,11 @@ fn draw_obstacle(camera: Res<Camera2D>, tm: Res<TextureManager>, obstacles: Quer
   }
 }
 
-// TODO
-fn lose(mut game_state: ResMut<State<GameState>>) { let _ = game_state.set(GameState::Playing); }
-
 #[macroquad::main(window_conf)]
 async fn main() {
   let mut world = World::new();
-  world.insert_resource(State::new(GameState::Playing));
+  world.insert_resource(State::new(GameState::MainMenu));
+  world.insert_resource(Exit(false));
   world.insert_resource(Camera2D::from_display_rect(Rect::new(
     0.0,
     0.0,
@@ -613,13 +650,23 @@ async fn main() {
   world.insert_resource(tm);
 
   let mut schedule = Schedule::default()
-    .with_stage("update", SystemStage::parallel())
+    .with_stage("update", SystemStage::single_threaded())
     .with_stage_after("update", "late_update", SystemStage::single_threaded());
 
   schedule.add_system_set_to_stage("update", State::<GameState>::get_driver());
   schedule.add_system_set_to_stage("late_update", State::<GameState>::get_driver());
 
-  schedule.add_system_set_to_stage("update", SystemSet::on_update(GameState::Won).with_system(won));
+  schedule.add_system_set_to_stage(
+    "update",
+    SystemSet::on_enter(GameState::MainMenu).with_system(despawn_all).with_system(spawn_player),
+  );
+  schedule.add_system_set_to_stage(
+    "update",
+    SystemSet::on_update(GameState::MainMenu)
+      .with_system(draw_background.label("background"))
+      .with_system(darken_background.label("darken_background").after("background"))
+      .with_system(main_menu.after("darken_background")),
+  );
 
   schedule.add_system_set_to_stage(
     "update",
@@ -652,13 +699,13 @@ async fn main() {
       .with_system(draw_obstacle.after("background")),
   );
 
-  schedule
-    .add_system_set_to_stage("update", SystemSet::on_update(GameState::Lose).with_system(lose));
-
   loop {
     clear_background(BLACK);
 
     schedule.run(&mut world);
+    if world.resource::<Exit>().0 {
+      break;
+    }
 
     next_frame().await;
   }
