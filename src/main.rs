@@ -229,7 +229,7 @@ fn main_menu(mut exit: ResMut<Exit>, mut game_state: ResMut<State<GameState>>) {
   );
 
   if play_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
-    let _ = game_state.set(GameState::Playing);
+    let _ = game_state.overwrite_set(GameState::Playing);
   }
 
   let exit_button = Rect::new(screen_width() / 2.0 - 250.0, screen_height() - 100.0, 500.0, 50.0);
@@ -413,10 +413,10 @@ fn tongue_collision(
 ) {
   for tongue in &tongues {
     if players.iter().any(|player| player.rect.overlaps(&tongue.rect)) {
-      let _ = game_state.set(GameState::MainMenu);
+      let _ = game_state.overwrite_set(GameState::MainMenu);
     }
-    if cats.iter().any(|player| player.rect.overlaps(&tongue.rect)) {
-      let _ = game_state.restart();
+    if cats.iter().any(|cat| cat.rect.overlaps(&tongue.rect)) {
+      let _ = game_state.overwrite_set(GameState::MainMenu);
     }
   }
 }
