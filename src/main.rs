@@ -62,30 +62,39 @@ struct TextureManager {
 struct Pathfinder {}
 
 impl Pathfinder {
-  fn update_pos(&mut self, start: &mut Rect, speed: f32, end: Vec2, obstacles: &Query<&Obstacle>) {
+  fn update_pos(
+    &mut self,
+    start: &mut Rect,
+    speed: f32,
+    end: Vec2,
+    obstacles: &Query<&Obstacle>,
+    bouncing: bool,
+  ) {
     let dir = (end - start.point()).normalize_or_zero();
 
     start.x += speed * dir.x * get_frame_time();
     start.y += speed * dir.y * get_frame_time();
 
-    for obstacle in obstacles {
-      let mut intersectioned = (0.0, 0.0);
+    if dir.x != 0.0 && dir.y != 0.0 && !bouncing {
+      for obstacle in obstacles {
+        let mut intersectioned = (0.0, 0.0);
 
-      while let Some(intersection) = start.intersect(obstacle.rect) {
-        intersectioned = (intersection.w, intersection.h);
-        if intersection.w > 0.0 {
-          start.x -= FIX_COLLISION * dir.x * get_frame_time();
+        while let Some(intersection) = start.intersect(obstacle.rect) {
+          intersectioned = (intersection.w, intersection.h);
+          if intersection.w > 0.0 {
+            start.x -= FIX_COLLISION * dir.x * get_frame_time();
+          }
+          if intersection.h > 0.0 {
+            start.y -= FIX_COLLISION * dir.y * get_frame_time();
+          }
         }
-        if intersection.h > 0.0 {
-          start.y -= FIX_COLLISION * dir.y * get_frame_time();
-        }
-      }
 
-      if (intersectioned.0 - intersectioned.1).abs() < f32::EPSILON {
-      } else if intersectioned.0 > intersectioned.1 {
-        start.y -= speed * dir.y * get_frame_time();
-      } else {
-        start.x -= speed * dir.x * get_frame_time();
+        if (intersectioned.0 - intersectioned.1).abs() < f32::EPSILON {
+        } else if intersectioned.0 > intersectioned.1 {
+          start.y -= speed * dir.y * get_frame_time();
+        } else {
+          start.x -= speed * dir.x * get_frame_time();
+        }
       }
     }
   }
@@ -303,35 +312,37 @@ fn control_player(mut players: Query<&mut Player>, obstacles: Query<&Obstacle>) 
       player.rect.x += speed * x as f32 * get_frame_time();
       player.rect.y += speed * y as f32 * get_frame_time();
 
-      for obstacle in &obstacles {
-        let mut intersectioned = (0.0, 0.0);
+      if x != 0 && y != 0 && player.bounce_percentage.is_none() {
+        for obstacle in &obstacles {
+          let mut intersectioned = (0.0, 0.0);
 
-        while let Some(intersection) = player.rect.intersect(obstacle.rect) {
-          intersectioned = (intersection.w, intersection.h);
-          if intersection.w > 0.0 {
-            player.rect.x -= FIX_COLLISION * x as f32 * get_frame_time();
+          while let Some(intersection) = player.rect.intersect(obstacle.rect) {
+            intersectioned = (intersection.w, intersection.h);
+            if intersection.w > 0.0 {
+              player.rect.x -= FIX_COLLISION * x as f32 * get_frame_time();
+            }
+            if intersection.h > 0.0 {
+              player.rect.y -= FIX_COLLISION * y as f32 * get_frame_time();
+            }
           }
-          if intersection.h > 0.0 {
-            player.rect.y -= FIX_COLLISION * y as f32 * get_frame_time();
+
+          if (intersectioned.0 - intersectioned.1).abs() < f32::EPSILON {
+          } else if intersectioned.0 > intersectioned.1 {
+            player.rect.y -= speed * y as f32 * get_frame_time();
+          } else {
+            player.rect.x -= speed * x as f32 * get_frame_time();
           }
         }
 
-        if (intersectioned.0 - intersectioned.1).abs() < f32::EPSILON {
-        } else if intersectioned.0 > intersectioned.1 {
-          player.rect.y -= speed * y as f32 * get_frame_time();
-        } else {
-          player.rect.x -= speed * x as f32 * get_frame_time();
+        if trigger_powerup && player.powerup_cooldown_timer <= 0.0 {
+          player.powerup_timer = match player.powerup_kind {
+            PowerUpKind::SpeedUp => PLAYER_SPEED_UP_TIME,
+            PowerUpKind::NoBounce => PLAYER_NO_BOUNCE_TIME,
+          };
+          player.powerup_cooldown_timer = PLAYER_POWERUP_COOLDOWN;
+        } else if player.powerup_timer <= 0.0 {
+          player.powerup_cooldown_timer -= get_frame_time();
         }
-      }
-
-      if trigger_powerup && player.powerup_cooldown_timer <= 0.0 {
-        player.powerup_timer = match player.powerup_kind {
-          PowerUpKind::SpeedUp => PLAYER_SPEED_UP_TIME,
-          PowerUpKind::NoBounce => PLAYER_NO_BOUNCE_TIME,
-        };
-        player.powerup_cooldown_timer = PLAYER_POWERUP_COOLDOWN;
-      } else if player.powerup_timer <= 0.0 {
-        player.powerup_cooldown_timer -= get_frame_time();
       }
     } else {
       player.stun_timer -= get_frame_time();
@@ -390,7 +401,7 @@ fn move_tongue(
     tongue.dir_x = dir.x;
     let dest = tongue.rect.point() + dir * TONGUE_MAX_DEST;
 
-    pathfinder.update_pos(&mut tongue.rect, TONGUE_SPEED, dest, &obstacles);
+    pathfinder.update_pos(&mut tongue.rect, TONGUE_SPEED, dest, &obstacles, false);
   }
 }
 
@@ -457,7 +468,14 @@ fn move_cat(
       let dest = cat.rect.point() + dir * CAT_MAX_DEST;
 
       let speed_mul = cat.speed_mul;
-      pathfinder.update_pos(&mut cat.rect, CAT_SPEED * speed_mul, dest, &obstacles);
+      let bounce_percentage = cat.bounce_percentage;
+      pathfinder.update_pos(
+        &mut cat.rect,
+        CAT_SPEED * speed_mul,
+        dest,
+        &obstacles,
+        bounce_percentage.is_some(),
+      );
     }
 
     if !player_slowed {
