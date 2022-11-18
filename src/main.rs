@@ -10,7 +10,7 @@ const PLAYER_HEIGHT: f32 = 105.0;
 const PLAYER_SPEED: f32 = 160.0;
 const PLAYER_SPEED_UP_TIME: f32 = 2.0;
 const PLAYER_SPEED_UP_SPEED: f32 = 256.0;
-const PLAYER_NO_STUN_TIME: f32 = 4.0;
+const PLAYER_NO_BOUNCE_TIME: f32 = 6.0;
 const PLAYER_POWERUP_COOLDOWN: f32 = 6.0;
 const FIX_COLLISION: f32 = 5.0;
 const PLAYER_ANIMATION_FPS: f32 = 1.0 / 4.0;
@@ -30,9 +30,9 @@ const CAT_SPEED: f32 = 140.0;
 const CAT_DEFENDER_PROXIMITY: f32 = 152.0;
 const CAT_SLOWING_PROXIMITY: f32 = 224.0;
 const CAT_MAX_DEST: f32 = 140.0;
-const CAT_ATTACKER_STUN_TIME: f32 = 0.2;
-const CAT_DEFENDER_STUN_TIME: f32 = 1.0;
-const CAT_SLOWING_STUN_TIME: f32 = 0.5;
+const CAT_ATTACKER_BOUNCE: f32 = 75.0;
+const CAT_DEFENDER_BOUNCE: f32 = 152.0;
+const CAT_SLOWING_BOUNCE: f32 = 35.0;
 const CAT_SLOWING_MUL: f32 = 0.5;
 
 const OBSTACLE_MANEKI_WIDTH: f32 = 78.0;
@@ -101,6 +101,8 @@ struct Player {
   animation_timer: f32,
   current_frame: usize,
   speed_mul: f32,
+  bounce_dest: Vec2,
+  bounce_percentage: Option<f32>,
 }
 
 impl Player {
@@ -115,6 +117,8 @@ impl Player {
       animation_timer: PLAYER_ANIMATION_FPS,
       current_frame: 0,
       speed_mul: 1.0,
+      bounce_dest: Vec2::ZERO,
+      bounce_percentage: None,
     }
   }
 }
@@ -122,7 +126,7 @@ impl Player {
 #[derive(PartialEq)]
 enum PowerUpKind {
   SpeedUp,
-  NoStun,
+  NoBounce,
 }
 
 #[derive(Component)]
@@ -286,7 +290,7 @@ fn control_player(
       if trigger_powerup && player.powerup_cooldown_timer <= 0.0 {
         player.powerup_timer = match player.powerup_kind {
           PowerUpKind::SpeedUp => PLAYER_SPEED_UP_TIME,
-          PowerUpKind::NoStun => PLAYER_NO_STUN_TIME,
+          PowerUpKind::NoBounce => PLAYER_NO_BOUNCE_TIME,
         };
         player.powerup_cooldown_timer = PLAYER_POWERUP_COOLDOWN;
       } else if player.powerup_timer <= 0.0 {
@@ -308,6 +312,22 @@ fn animate_player(mut players: Query<&mut Player>) {
       if player.animation_timer <= 0.0 {
         player.animation_timer = PLAYER_ANIMATION_FPS / player.speed_mul;
         player.current_frame = 1 - player.current_frame;
+      }
+    }
+  }
+}
+
+fn bounce_player(mut players: Query<&mut Player>) {
+  for mut player in &mut players {
+    if let Some(percentage) = player.bounce_percentage {
+      let dest = player.rect.point().lerp(player.bounce_dest, percentage.min(1.0));
+      let pos = dest - player.rect.point();
+      player.rect.x += pos.x;
+      player.rect.y += pos.y;
+      if percentage > 1.0 {
+        player.bounce_percentage = None;
+      } else {
+        player.bounce_percentage = Some(percentage + 0.1);
       }
     }
   }
@@ -409,22 +429,21 @@ fn move_cat(
   }
 }
 
-fn cat_collision(
-  mut commands: Commands,
-  mut players: Query<&mut Player>,
-  cats: Query<(Entity, &Cat)>,
-) {
+fn cat_collision(mut players: Query<&mut Player>, cats: Query<&Cat>) {
   for mut player in &mut players {
-    for (cat_entity, cat) in &cats {
-      if player.rect.overlaps(&cat.rect) {
-        commands.entity(cat_entity).despawn();
-        if !(player.powerup_kind == PowerUpKind::NoStun && player.powerup_timer > 0.0) {
-          player.stun_timer = match cat.kind {
-            CatKind::Attacker => CAT_ATTACKER_STUN_TIME,
-            CatKind::Defender => CAT_DEFENDER_STUN_TIME,
-            CatKind::Slowing => CAT_SLOWING_STUN_TIME,
-          };
-        }
+    for cat in &cats {
+      if player.rect.overlaps(&cat.rect)
+        && !(player.powerup_kind == PowerUpKind::NoBounce && player.powerup_timer > 0.0)
+        && player.bounce_percentage.is_none()
+      {
+        let dir = (player.rect.center() - cat.rect.center()).normalize_or_zero();
+        let cat_bounce_amount = match cat.kind {
+          CatKind::Attacker => CAT_ATTACKER_BOUNCE,
+          CatKind::Defender => CAT_DEFENDER_BOUNCE,
+          CatKind::Slowing => CAT_SLOWING_BOUNCE,
+        };
+        player.bounce_dest = player.rect.point() + dir * cat_bounce_amount;
+        player.bounce_percentage = Some(0.0);
       }
     }
   }
@@ -616,6 +635,7 @@ async fn main() {
     SystemSet::on_update(GameState::Playing)
       .with_system(control_player)
       .with_system(animate_player)
+      .with_system(bounce_player)
       .with_system(move_tongue)
       .with_system(tongue_collision)
       .with_system(move_cat)
