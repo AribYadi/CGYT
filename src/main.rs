@@ -148,6 +148,8 @@ struct Cat {
   dir_x: f32,
   kind: CatKind,
   speed_mul: f32,
+  bounce_dest: Vec2,
+  bounce_percentage: Option<f32>,
 }
 
 impl Cat {
@@ -161,6 +163,8 @@ impl Cat {
       dir_x: 0.0,
       kind,
       speed_mul: 1.0,
+      bounce_dest: Vec2::ZERO,
+      bounce_percentage: None,
     }
   }
 }
@@ -360,7 +364,7 @@ fn bounce_player(mut players: Query<&mut Player>) {
       if percentage > 1.0 {
         player.bounce_percentage = None;
       } else {
-        player.bounce_percentage = Some(percentage + 0.1);
+        player.bounce_percentage = Some(percentage + 0.05);
       }
     }
   }
@@ -462,9 +466,9 @@ fn move_cat(
   }
 }
 
-fn cat_collision(mut players: Query<&mut Player>, cats: Query<&Cat>) {
+fn cat_collision(mut players: Query<&mut Player>, mut cats: Query<&mut Cat>) {
   for mut player in &mut players {
-    for cat in &cats {
+    for mut cat in &mut cats {
       if player.rect.overlaps(&cat.rect)
         && !(player.powerup_kind == PowerUpKind::NoBounce && player.powerup_timer > 0.0)
         && player.bounce_percentage.is_none()
@@ -475,8 +479,26 @@ fn cat_collision(mut players: Query<&mut Player>, cats: Query<&Cat>) {
           CatKind::Defender => CAT_DEFENDER_BOUNCE,
           CatKind::Slowing => CAT_SLOWING_BOUNCE,
         };
+        cat.bounce_dest = cat.rect.point() - dir * cat_bounce_amount;
+        cat.bounce_percentage = Some(0.0);
         player.bounce_dest = player.rect.point() + dir * cat_bounce_amount;
         player.bounce_percentage = Some(0.0);
+      }
+    }
+  }
+}
+
+fn bounce_cat(mut cats: Query<&mut Cat>) {
+  for mut cat in &mut cats {
+    if let Some(percentage) = cat.bounce_percentage {
+      let dest = cat.rect.point().lerp(cat.bounce_dest, percentage.min(1.0));
+      let pos = dest - cat.rect.point();
+      cat.rect.x += pos.x;
+      cat.rect.y += pos.y;
+      if percentage > 1.0 {
+        cat.bounce_percentage = None;
+      } else {
+        cat.bounce_percentage = Some(percentage + 0.05);
       }
     }
   }
@@ -690,6 +712,7 @@ async fn main() {
       .with_system(tongue_collision)
       .with_system(move_cat)
       .with_system(cat_collision)
+      .with_system(bounce_cat)
       .with_system(obstacle_maneki_update)
       .with_system(update_camera),
   );
