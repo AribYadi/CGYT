@@ -316,12 +316,18 @@ fn animate_player(mut players: Query<&mut Player>) {
 fn move_tongue(
   mut tongues: Query<(&mut Tongue, &mut Pathfinder)>,
   cats: Query<&Cat>,
+  players: Query<&Player>,
   obstacles: Query<&Obstacle>,
 ) {
   for (mut tongue, mut pathfinder) in &mut tongues {
     let mut dir = Vec2::ZERO;
     for cat in &cats {
       dir += (cat.rect.point() - tongue.rect.point()).normalize_or_zero();
+    }
+    if dir == Vec2::ZERO {
+      for player in &players {
+        dir += (player.rect.point() - tongue.rect.point()).normalize_or_zero();
+      }
     }
     dir = Vec2::ZERO - dir.normalize_or_zero();
     tongue.dir_x = dir.x;
