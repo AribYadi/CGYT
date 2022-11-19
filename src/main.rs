@@ -42,10 +42,13 @@ const OBSTACLE_MANEKI_PROXIMITY: f32 = 192.0;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum GameState {
   MainMenu,
+  LevelSelect,
   Playing,
 }
 
 struct Exit(bool);
+struct JustPressedBackButton(bool, f32);
+struct Level(usize);
 
 struct TextureManager {
   cat_black: Texture2D,
@@ -116,8 +119,8 @@ struct Player {
 }
 
 impl Player {
-  fn new(pos: Vec2, powerup_kind: PowerUpKind) -> Player {
-    Player {
+  fn new(pos: Vec2, powerup_kind: PowerUpKind) -> (Player,) {
+    (Player {
       rect: Rect::new(pos.x, pos.y, PLAYER_WIDTH, PLAYER_HEIGHT),
       dir_x: 0.0,
       stun_timer: 0.0,
@@ -129,7 +132,7 @@ impl Player {
       speed_mul: 1.0,
       bounce_dest: Vec2::ZERO,
       bounce_percentage: None,
-    }
+    },)
   }
 }
 
@@ -146,8 +149,11 @@ struct Tongue {
 }
 
 impl Tongue {
-  fn new(pos: Vec2) -> Tongue {
-    Tongue { rect: Rect::new(pos.x, pos.y, TONGUE_WIDTH, TONGUE_HEIGHT), dir_x: 0.0 }
+  fn new(pos: Vec2) -> (Tongue, Pathfinder) {
+    (
+      Tongue { rect: Rect::new(pos.x, pos.y, TONGUE_WIDTH, TONGUE_HEIGHT), dir_x: 0.0 },
+      Pathfinder {},
+    )
   }
 }
 
@@ -162,19 +168,22 @@ struct Cat {
 }
 
 impl Cat {
-  fn new(pos: Vec2, kind: CatKind) -> Cat {
-    Cat {
-      rect: match kind {
-        CatKind::Attacker => Rect::new(pos.x, pos.y, CAT_ATTACKER_WIDTH, CAT_ATTACKER_HEIGHT),
-        CatKind::Defender => Rect::new(pos.x, pos.y, CAT_DEFENDER_WIDTH, CAT_DEFENDER_HEIGHT),
-        CatKind::Slowing => Rect::new(pos.x, pos.y, CAT_SLOWING_WIDTH, CAT_SLOWING_HEIGHT),
+  fn new(pos: Vec2, kind: CatKind) -> (Cat, Pathfinder) {
+    (
+      Cat {
+        rect: match kind {
+          CatKind::Attacker => Rect::new(pos.x, pos.y, CAT_ATTACKER_WIDTH, CAT_ATTACKER_HEIGHT),
+          CatKind::Defender => Rect::new(pos.x, pos.y, CAT_DEFENDER_WIDTH, CAT_DEFENDER_HEIGHT),
+          CatKind::Slowing => Rect::new(pos.x, pos.y, CAT_SLOWING_WIDTH, CAT_SLOWING_HEIGHT),
+        },
+        dir_x: 0.0,
+        kind,
+        speed_mul: 1.0,
+        bounce_dest: Vec2::ZERO,
+        bounce_percentage: None,
       },
-      dir_x: 0.0,
-      kind,
-      speed_mul: 1.0,
-      bounce_dest: Vec2::ZERO,
-      bounce_percentage: None,
-    }
+      Pathfinder {},
+    )
   }
 }
 
@@ -192,15 +201,15 @@ struct Obstacle {
 }
 
 impl Obstacle {
-  fn new(pos: Vec2, kind: ObstacleKind) -> Obstacle {
-    Obstacle {
+  fn new(pos: Vec2, kind: ObstacleKind) -> (Obstacle,) {
+    (Obstacle {
       rect: match kind {
         ObstacleKind::Maneki => {
           Rect::new(pos.x, pos.y, OBSTACLE_MANEKI_WIDTH, OBSTACLE_MANEKI_HEIGHT)
         },
       },
       kind,
-    }
+    },)
   }
 }
 
@@ -213,7 +222,11 @@ fn darken_background() {
   draw_rectangle(0.0, 0.0, screen_width(), screen_height(), color_u8!(0, 0, 0, 100));
 }
 
-fn main_menu(mut exit: ResMut<Exit>, mut game_state: ResMut<State<GameState>>) {
+fn main_menu(
+  mut exit: ResMut<Exit>,
+  mut game_state: ResMut<State<GameState>>,
+  just_pressed_back_button: Res<JustPressedBackButton>,
+) {
   let mouse_pointer: Vec2 = mouse_position().into();
 
   let play_button = Rect::new(screen_width() / 2.0 - 250.0, screen_height() - 175.0, 500.0, 50.0);
@@ -229,7 +242,7 @@ fn main_menu(mut exit: ResMut<Exit>, mut game_state: ResMut<State<GameState>>) {
   );
 
   if play_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
-    let _ = game_state.overwrite_set(GameState::Playing);
+    let _ = game_state.overwrite_set(GameState::LevelSelect);
   }
 
   let exit_button = Rect::new(screen_width() / 2.0 - 250.0, screen_height() - 100.0, 500.0, 50.0);
@@ -245,8 +258,74 @@ fn main_menu(mut exit: ResMut<Exit>, mut game_state: ResMut<State<GameState>>) {
   );
 
   #[cfg(not(target_arch = "wasm32"))]
-  if exit_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
+  if exit_button.contains(mouse_pointer)
+    && is_mouse_button_pressed(MouseButton::Left)
+    && !just_pressed_back_button.0
+  {
     *exit = Exit(true);
+  }
+}
+
+fn level_select(
+  mut game_state: ResMut<State<GameState>>,
+  mut just_pressed_back_button: ResMut<JustPressedBackButton>,
+  mut level: ResMut<Level>,
+) {
+  let mouse_pointer: Vec2 = mouse_position().into();
+
+  let startx = (screen_width() - 75.0 * 5.0) / 2.0;
+  let starty = screen_height() / 4.0 - 50.0;
+  for i in 0..1 {
+    for j in 0..1 {
+      let x = startx + 75.0 * j as f32;
+      let y = starty + 75.0 * i as f32;
+
+      let button = Rect::new(x, y, 50.0, 50.0);
+
+      draw_rectangle(button.x, button.y, button.w, button.h, WHITE);
+
+      let new_level = i * 5 + j + 1;
+      let n = new_level.to_string();
+      let text_measure = measure_text(&n, None, 40, 1.0);
+      draw_text(
+        &n,
+        button.center().x - text_measure.width / 2.0,
+        button.center().y + text_measure.offset_y / 2.0,
+        40.0,
+        BLACK,
+      );
+
+      if button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
+        level.0 = new_level;
+        let _ = game_state.overwrite_set(GameState::Playing);
+      }
+    }
+  }
+
+  let back_button = Rect::new(screen_width() / 2.0 - 250.0, screen_height() - 100.0, 500.0, 50.0);
+  draw_rectangle(back_button.x, back_button.y, back_button.w, back_button.h, WHITE);
+
+  let text_measure = measure_text("Back", None, 40, 1.0);
+  draw_text(
+    "Back",
+    back_button.center().x - text_measure.width / 2.0,
+    back_button.center().y + text_measure.offset_y / 2.0,
+    40.0,
+    BLACK,
+  );
+
+  if back_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
+    let _ = game_state.overwrite_set(GameState::MainMenu);
+    just_pressed_back_button.0 = true;
+    just_pressed_back_button.1 = 0.1;
+  }
+}
+
+fn update_misc(mut just_pressed_back_button: ResMut<JustPressedBackButton>) {
+  if just_pressed_back_button.1 > 0.0 {
+    just_pressed_back_button.1 -= get_frame_time();
+  } else {
+    just_pressed_back_button.0 = false;
   }
 }
 
@@ -257,37 +336,33 @@ fn despawn_all(mut commands: Commands, entities: Query<Entity>) {
 }
 
 fn spawn_player(mut commands: Commands) {
-  commands
-    .spawn()
-    .insert(Player::new(vec2(screen_width(), screen_width()) / 2.0, PowerUpKind::SpeedUp));
+  commands.spawn_bundle(Player::new(
+    vec2(screen_width() / 2.0, screen_width()) / 2.0,
+    PowerUpKind::SpeedUp,
+  ));
 }
 
-fn spawn_tongue(mut commands: Commands) {
-  commands
-    .spawn()
-    .insert(Tongue::new(vec2(screen_width() - TONGUE_WIDTH / 2.0, 0.0)))
-    .insert(Pathfinder {});
+fn spawn_tongue(mut commands: Commands, level: Res<Level>) {
+  match level.0 {
+    1 => {
+      commands.spawn_bundle(Tongue::new(vec2((800.0 - TONGUE_WIDTH) / 2.0, 100.0)));
+    },
+    _ => (),
+  }
 }
 
-fn spawn_cat(mut commands: Commands) {
-  commands
-    .spawn()
-    .insert(Cat::new(
-      vec2(screen_width() - CAT_ATTACKER_WIDTH / 2.0, screen_height() - CAT_ATTACKER_HEIGHT / 2.0),
-      CatKind::Attacker,
-    ))
-    .insert(Pathfinder {});
-  commands.spawn().insert(Cat::new(vec2(0.0, 0.0), CatKind::Slowing)).insert(Pathfinder {});
-  commands
-    .spawn()
-    .insert(Cat::new(vec2(0.0, screen_height() - CAT_DEFENDER_WIDTH / 2.0), CatKind::Defender))
-    .insert(Pathfinder {});
+fn spawn_cat(mut commands: Commands, level: Res<Level>) {
+  match level.0 {
+    1 => (),
+    _ => (),
+  }
 }
 
-fn spawn_obstacle(mut commands: Commands) {
-  commands
-    .spawn()
-    .insert(Obstacle::new(vec2(screen_width() + 100.0, -100.0), ObstacleKind::Maneki));
+fn spawn_obstacle(mut commands: Commands, level: Res<Level>) {
+  match level.0 {
+    1 => (),
+    _ => (),
+  }
 }
 
 fn control_player(mut players: Query<&mut Player>, obstacles: Query<&Obstacle>) {
@@ -413,10 +488,10 @@ fn tongue_collision(
 ) {
   for tongue in &tongues {
     if players.iter().any(|player| player.rect.overlaps(&tongue.rect)) {
-      let _ = game_state.overwrite_set(GameState::MainMenu);
+      let _ = game_state.overwrite_set(GameState::LevelSelect);
     }
     if cats.iter().any(|cat| cat.rect.overlaps(&tongue.rect)) {
-      let _ = game_state.overwrite_set(GameState::MainMenu);
+      let _ = game_state.overwrite_set(GameState::LevelSelect);
     }
   }
 }
@@ -659,6 +734,8 @@ async fn main() {
   let mut world = World::new();
   world.insert_resource(State::new(GameState::MainMenu));
   world.insert_resource(Exit(false));
+  world.insert_resource(JustPressedBackButton(false, 0.0));
+  world.insert_resource(Level(1));
   world.insert_resource(Camera2D::from_display_rect(Rect::new(
     0.0,
     0.0,
@@ -701,7 +778,7 @@ async fn main() {
   );
   schedule.add_system_set_to_stage(
     "update",
-    SystemSet::on_update(GameState::MainMenu).with_system(update_camera),
+    SystemSet::on_update(GameState::MainMenu).with_system(update_misc).with_system(update_camera),
   );
   schedule.add_system_set_to_stage(
     "late_update",
@@ -709,6 +786,24 @@ async fn main() {
       .with_system(draw_background.label("background"))
       .with_system(darken_background.label("darken_background").after("background"))
       .with_system(main_menu.after("darken_background")),
+  );
+
+  schedule.add_system_set_to_stage(
+    "update",
+    SystemSet::on_enter(GameState::LevelSelect).with_system(despawn_all).with_system(spawn_player),
+  );
+  schedule.add_system_set_to_stage(
+    "update",
+    SystemSet::on_update(GameState::LevelSelect)
+      .with_system(update_misc)
+      .with_system(update_camera),
+  );
+  schedule.add_system_set_to_stage(
+    "late_update",
+    SystemSet::on_update(GameState::LevelSelect)
+      .with_system(draw_background.label("background"))
+      .with_system(darken_background.label("darken_background").after("background"))
+      .with_system(level_select.after("darken_background")),
   );
 
   schedule.add_system_set_to_stage(
