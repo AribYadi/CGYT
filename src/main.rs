@@ -275,8 +275,13 @@ fn level_select(
 
   let startx = (screen_width() - 75.0 * 5.0) / 2.0;
   let starty = screen_height() / 4.0 - 50.0;
-  for i in 0..1 {
-    for j in 0..1 {
+  for i in 0..2 {
+    for j in 0..5 {
+      let new_level = i * 5 + j + 1;
+      if new_level > 5 {
+        break;
+      }
+
       let x = startx + 75.0 * j as f32;
       let y = starty + 75.0 * i as f32;
 
@@ -284,7 +289,6 @@ fn level_select(
 
       draw_rectangle(button.x, button.y, button.w, button.h, WHITE);
 
-      let new_level = i * 5 + j + 1;
       let n = new_level.to_string();
       let text_measure = measure_text(&n, None, 40, 1.0);
       draw_text(
@@ -336,32 +340,79 @@ fn despawn_all(mut commands: Commands, entities: Query<Entity>) {
 }
 
 fn spawn_player(mut commands: Commands) {
-  commands.spawn_bundle(Player::new(
-    vec2(screen_width() / 2.0, screen_width()) / 2.0,
-    PowerUpKind::SpeedUp,
-  ));
+  commands.spawn_bundle(Player::new(vec2(800.0, 600.0) / 2.0, PowerUpKind::SpeedUp));
 }
 
 fn spawn_tongue(mut commands: Commands, level: Res<Level>) {
   match level.0 {
     1 => {
-      commands.spawn_bundle(Tongue::new(vec2((800.0 - TONGUE_WIDTH) / 2.0, 100.0)));
+      commands.spawn_bundle(Tongue::new(vec2((800.0 - TONGUE_WIDTH) / 2.0, 50.0)));
     },
-    _ => (),
+    2 => {
+      commands.spawn_bundle(Tongue::new(vec2(0.0, 50.0)));
+    },
+    3 => {
+      commands.spawn_bundle(Tongue::new(vec2((800.0 - TONGUE_WIDTH) / 2.0, 550.0)));
+    },
+    4 => {
+      commands.spawn_bundle(Tongue::new(vec2(150.0, (600.0 - TONGUE_WIDTH) / 2.0)));
+    },
+    5 => {
+      commands.spawn_bundle(Tongue::new(vec2((800.0 - TONGUE_WIDTH) / 2.0, 0.0)));
+    },
+    _ => {},
   }
 }
 
 fn spawn_cat(mut commands: Commands, level: Res<Level>) {
   match level.0 {
-    1 => (),
-    _ => (),
+    1 => {},
+    2 => {
+      commands.spawn_bundle(Cat::new(vec2(800.0 - CAT_ATTACKER_WIDTH, 100.0), CatKind::Attacker));
+    },
+    3 => {
+      commands
+        .spawn_bundle(Cat::new(vec2((800.0 - CAT_ATTACKER_WIDTH) / 2.0, 0.0), CatKind::Attacker));
+      commands.spawn_bundle(Cat::new(vec2(800.0 - CAT_ATTACKER_WIDTH, 500.0), CatKind::Attacker));
+    },
+    4 => {
+      commands.spawn_bundle(Cat::new(
+        vec2(800.0 - CAT_ATTACKER_WIDTH, (600.0 - CAT_ATTACKER_WIDTH) / 2.0),
+        CatKind::Attacker,
+      ));
+    },
+    5 => {
+      commands
+        .spawn_bundle(Cat::new(vec2(100.0, (600.0 - CAT_ATTACKER_WIDTH) / 2.0), CatKind::Attacker));
+      commands
+        .spawn_bundle(Cat::new(vec2(700.0, (600.0 - CAT_ATTACKER_WIDTH) / 2.0), CatKind::Attacker));
+    },
+    _ => {},
   }
 }
 
 fn spawn_obstacle(mut commands: Commands, level: Res<Level>) {
   match level.0 {
-    1 => (),
-    _ => (),
+    1 => {},
+    2 => {},
+    3 => {},
+    4 => {
+      commands.spawn_bundle(Obstacle::new(
+        vec2(0.0, (600.0 - OBSTACLE_MANEKI_HEIGHT) / 2.0) + CAT_ATTACKER_HEIGHT + 10.0,
+        ObstacleKind::Maneki,
+      ));
+    },
+    5 => {
+      commands.spawn_bundle(Obstacle::new(
+        vec2((800.0 - OBSTACLE_MANEKI_WIDTH) / 2.0 - 150.0, 150.0),
+        ObstacleKind::Maneki,
+      ));
+      commands.spawn_bundle(Obstacle::new(
+        vec2((800.0 - OBSTACLE_MANEKI_WIDTH) / 2.0 + 150.0 + OBSTACLE_MANEKI_WIDTH, 150.0),
+        ObstacleKind::Maneki,
+      ));
+    },
+    _ => {},
   }
 }
 
