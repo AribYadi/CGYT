@@ -39,6 +39,11 @@ const OBSTACLE_MANEKI_WIDTH: f32 = 78.0;
 const OBSTACLE_MANEKI_HEIGHT: f32 = 115.0;
 const OBSTACLE_MANEKI_PROXIMITY: f32 = 192.0;
 
+const FONT_SIZE: u16 = 30;
+const UI_BG_COLOR: Color = color_u8!(0, 153, 219, 255);
+const UI_FG_COLOR: Color = color_u8!(44, 232, 245, 255);
+const UI_BUTTON_OUTLINE: f32 = 5.0;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum GameState {
   MainMenu,
@@ -59,6 +64,7 @@ struct TextureManager {
   skull_closed: Texture2D,
   skull_open: Texture2D,
   tongue: Texture2D,
+  font: Font,
 }
 
 #[derive(Component)]
@@ -222,7 +228,27 @@ fn darken_background() {
   draw_rectangle(0.0, 0.0, screen_width(), screen_height(), color_u8!(0, 0, 0, 100));
 }
 
+fn draw_ui_button(tm: &Res<TextureManager>, rect: &Rect, txt: &str) {
+  draw_rectangle(rect.x, rect.y, rect.w, rect.h, UI_FG_COLOR);
+  draw_rectangle(
+    rect.x + UI_BUTTON_OUTLINE,
+    rect.y + UI_BUTTON_OUTLINE,
+    rect.w - UI_BUTTON_OUTLINE * 2.0,
+    rect.h - UI_BUTTON_OUTLINE * 2.0,
+    UI_BG_COLOR,
+  );
+
+  let text_measure = measure_text(txt, Some(tm.font), FONT_SIZE, 1.0);
+  draw_text_ex(
+    txt,
+    rect.center().x - text_measure.width / 2.0,
+    rect.center().y + text_measure.offset_y / 2.0,
+    TextParams { font: tm.font, font_size: FONT_SIZE, color: UI_FG_COLOR, ..Default::default() },
+  );
+}
+
 fn main_menu(
+  tm: Res<TextureManager>,
   mut exit: ResMut<Exit>,
   mut game_state: ResMut<State<GameState>>,
   just_pressed_back_button: Res<JustPressedBackButton>,
@@ -230,32 +256,14 @@ fn main_menu(
   let mouse_pointer: Vec2 = mouse_position().into();
 
   let play_button = Rect::new(screen_width() / 2.0 - 250.0, screen_height() - 175.0, 500.0, 50.0);
-  draw_rectangle(play_button.x, play_button.y, play_button.w, play_button.h, WHITE);
-
-  let text_measure = measure_text("Play", None, 40, 1.0);
-  draw_text(
-    "Play",
-    play_button.center().x - text_measure.width / 2.0,
-    play_button.center().y + text_measure.offset_y / 2.0,
-    40.0,
-    BLACK,
-  );
+  draw_ui_button(&tm, &play_button, "Play");
 
   if play_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
     let _ = game_state.overwrite_set(GameState::LevelSelect);
   }
 
   let exit_button = Rect::new(screen_width() / 2.0 - 250.0, screen_height() - 100.0, 500.0, 50.0);
-  draw_rectangle(exit_button.x, exit_button.y, exit_button.w, exit_button.h, WHITE);
-
-  let text_measure = measure_text("Exit", None, 40, 1.0);
-  draw_text(
-    "Exit",
-    exit_button.center().x - text_measure.width / 2.0,
-    exit_button.center().y + text_measure.offset_y / 2.0,
-    40.0,
-    BLACK,
-  );
+  draw_ui_button(&tm, &exit_button, "Exit");
 
   #[cfg(not(target_arch = "wasm32"))]
   if exit_button.contains(mouse_pointer)
@@ -267,6 +275,7 @@ fn main_menu(
 }
 
 fn level_select(
+  tm: Res<TextureManager>,
   mut game_state: ResMut<State<GameState>>,
   mut just_pressed_back_button: ResMut<JustPressedBackButton>,
   mut level: ResMut<Level>,
@@ -286,18 +295,7 @@ fn level_select(
       let y = starty + 75.0 * i as f32;
 
       let button = Rect::new(x, y, 50.0, 50.0);
-
-      draw_rectangle(button.x, button.y, button.w, button.h, WHITE);
-
-      let n = new_level.to_string();
-      let text_measure = measure_text(&n, None, 40, 1.0);
-      draw_text(
-        &n,
-        button.center().x - text_measure.width / 2.0,
-        button.center().y + text_measure.offset_y / 2.0,
-        40.0,
-        BLACK,
-      );
+      draw_ui_button(&tm, &button, &new_level.to_string());
 
       if button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
         level.0 = new_level;
@@ -307,16 +305,7 @@ fn level_select(
   }
 
   let back_button = Rect::new(screen_width() / 2.0 - 250.0, screen_height() - 100.0, 500.0, 50.0);
-  draw_rectangle(back_button.x, back_button.y, back_button.w, back_button.h, WHITE);
-
-  let text_measure = measure_text("Back", None, 40, 1.0);
-  draw_text(
-    "Back",
-    back_button.center().x - text_measure.width / 2.0,
-    back_button.center().y + text_measure.offset_y / 2.0,
-    40.0,
-    BLACK,
-  );
+  draw_ui_button(&tm, &back_button, "Back");
 
   if back_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
     let _ = game_state.overwrite_set(GameState::MainMenu);
@@ -803,6 +792,7 @@ async fn main() {
     skull_closed: load_texture("res/skull_closed.png").await.unwrap(),
     skull_open: load_texture("res/skull_open.png").await.unwrap(),
     tongue: load_texture("res/tongue.png").await.unwrap(),
+    font: load_ttf_font("res/yoster-island.ttf").await.unwrap(),
   };
 
   tm.cat_black.set_filter(FilterMode::Nearest);
