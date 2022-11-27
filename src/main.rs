@@ -59,6 +59,7 @@ struct TextureManager {
   cat_black: Texture2D,
   cat_grey: Texture2D,
   cat_orange: Texture2D,
+  cgyt: Texture2D,
   cobblestone: Texture2D,
   manekineko: Texture2D,
   skull_closed: Texture2D,
@@ -254,6 +255,17 @@ fn main_menu(
   just_pressed_back_button: Res<JustPressedBackButton>,
 ) {
   let mouse_pointer: Vec2 = mouse_position().into();
+
+  draw_texture_ex(
+    tm.cgyt,
+    (screen_width() - tm.cgyt.width() * 2.0) / 2.0,
+    (screen_height() - tm.cgyt.height() * 3.5) / 2.0,
+    WHITE,
+    DrawTextureParams {
+      dest_size: Some(vec2(tm.cgyt.width(), tm.cgyt.height()) * 2.0),
+      ..Default::default()
+    },
+  );
 
   let play_button = Rect::new(screen_width() / 2.0 - 250.0, screen_height() - 175.0, 500.0, 50.0);
   draw_ui_button(&tm, &play_button, "Play");
@@ -856,6 +868,7 @@ async fn main() {
     cat_black: load_texture("res/cat_black.png").await.unwrap(),
     cat_grey: load_texture("res/cat_grey.png").await.unwrap(),
     cat_orange: load_texture("res/cat_orange.png").await.unwrap(),
+    cgyt: load_texture("res/cgyt.png").await.unwrap(),
     cobblestone: load_texture("res/cobblestone.png").await.unwrap(),
     manekineko: load_texture("res/manekineko.png").await.unwrap(),
     skull_closed: load_texture("res/skull_closed.png").await.unwrap(),
@@ -867,6 +880,7 @@ async fn main() {
   tm.cat_black.set_filter(FilterMode::Nearest);
   tm.cat_grey.set_filter(FilterMode::Nearest);
   tm.cat_orange.set_filter(FilterMode::Nearest);
+  tm.cgyt.set_filter(FilterMode::Nearest);
   tm.cobblestone.set_filter(FilterMode::Nearest);
   tm.manekineko.set_filter(FilterMode::Nearest);
   tm.skull_closed.set_filter(FilterMode::Nearest);
