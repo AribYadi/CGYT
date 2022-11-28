@@ -1008,7 +1008,7 @@ async fn main() {
 
   play_sound(
     load_sound("res/song.wav").await.unwrap(),
-    PlaySoundParams { looped: true, volume: 0.3, ..Default::default() },
+    PlaySoundParams { looped: true, volume: 0.3 },
   );
 
   loop {
