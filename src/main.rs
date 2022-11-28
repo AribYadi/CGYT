@@ -1,4 +1,9 @@
 use bevy_ecs::prelude::*;
+use macroquad::audio::{
+  load_sound,
+  play_sound_once,
+  Sound,
+};
 use macroquad::prelude::*;
 
 fn window_conf() -> Conf {
@@ -56,16 +61,22 @@ struct JustPressedBackButton(bool, f32);
 struct Level(usize);
 
 struct TextureManager {
+  bounce_1: Sound,
+  bounce_2: Sound,
+  bounce_3: Sound,
   cat_black: Texture2D,
   cat_grey: Texture2D,
   cat_orange: Texture2D,
   cgyt: Texture2D,
   cobblestone: Texture2D,
+  lose: Sound,
   manekineko: Texture2D,
   skull_closed: Texture2D,
   skull_open: Texture2D,
   tongue: Texture2D,
-  font: Font,
+  ui: Sound,
+  win: Sound,
+  yoster_island: Font,
 }
 
 #[derive(Component)]
@@ -239,12 +250,17 @@ fn draw_ui_button(tm: &Res<TextureManager>, rect: &Rect, txt: &str) {
     UI_BG_COLOR,
   );
 
-  let text_measure = measure_text(txt, Some(tm.font), FONT_SIZE, 1.0);
+  let text_measure = measure_text(txt, Some(tm.yoster_island), FONT_SIZE, 1.0);
   draw_text_ex(
     txt,
     rect.center().x - text_measure.width / 2.0,
     rect.center().y + text_measure.offset_y / 2.0,
-    TextParams { font: tm.font, font_size: FONT_SIZE, color: UI_FG_COLOR, ..Default::default() },
+    TextParams {
+      font: tm.yoster_island,
+      font_size: FONT_SIZE,
+      color: UI_FG_COLOR,
+      ..Default::default()
+    },
   );
 }
 
@@ -271,6 +287,7 @@ fn main_menu(
   draw_ui_button(&tm, &play_button, "Play");
 
   if play_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
+    play_sound_once(tm.ui);
     let _ = game_state.overwrite_set(GameState::LevelSelect);
   }
 
@@ -282,6 +299,7 @@ fn main_menu(
     && is_mouse_button_pressed(MouseButton::Left)
     && !just_pressed_back_button.0
   {
+    play_sound_once(tm.ui);
     *exit = Exit(true);
   }
 }
@@ -310,6 +328,7 @@ fn level_select(
       draw_ui_button(&tm, &button, &new_level.to_string());
 
       if button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
+        play_sound_once(tm.ui);
         level.0 = new_level;
         let _ = game_state.overwrite_set(GameState::Playing);
       }
@@ -320,6 +339,7 @@ fn level_select(
   draw_ui_button(&tm, &back_button, "Back");
 
   if back_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
+    play_sound_once(tm.ui);
     let _ = game_state.overwrite_set(GameState::MainMenu);
     just_pressed_back_button.0 = true;
     just_pressed_back_button.1 = 0.1;
@@ -602,6 +622,7 @@ fn move_tongue(
 }
 
 fn tongue_collision(
+  tm: Res<TextureManager>,
   tongues: Query<&Tongue>,
   players: Query<&Player>,
   cats: Query<&Cat>,
@@ -609,9 +630,11 @@ fn tongue_collision(
 ) {
   for tongue in &tongues {
     if players.iter().any(|player| player.rect.overlaps(&tongue.rect)) {
+      play_sound_once(tm.win);
       let _ = game_state.overwrite_set(GameState::LevelSelect);
     }
     if cats.iter().any(|cat| cat.rect.overlaps(&tongue.rect)) {
+      play_sound_once(tm.lose);
       let _ = game_state.overwrite_set(GameState::LevelSelect);
     }
   }
@@ -680,13 +703,25 @@ fn move_cat(
   }
 }
 
-fn cat_collision(mut players: Query<&mut Player>, mut cats: Query<&mut Cat>) {
+fn cat_collision(
+  tm: Res<TextureManager>,
+  mut players: Query<&mut Player>,
+  mut cats: Query<&mut Cat>,
+) {
   for mut player in &mut players {
     for mut cat in &mut cats {
       if player.rect.overlaps(&cat.rect)
         && !(player.powerup_kind == PowerUpKind::NoBounce && player.powerup_timer > 0.0)
         && player.bounce_percentage.is_none()
       {
+        let sound = match rand::gen_range(0, 3) {
+          0 => tm.bounce_1,
+          1 => tm.bounce_2,
+          2 => tm.bounce_3,
+          _ => unreachable!(),
+        };
+        play_sound_once(sound);
+
         let dir = (player.rect.center() - cat.rect.center()).normalize_or_zero();
         let cat_bounce_amount = match cat.kind {
           CatKind::Attacker => CAT_ATTACKER_BOUNCE,
@@ -865,16 +900,22 @@ async fn main() {
   )));
 
   let tm = TextureManager {
+    bounce_1: load_sound("res/bounce_1.wav").await.unwrap(),
+    bounce_2: load_sound("res/bounce_2.wav").await.unwrap(),
+    bounce_3: load_sound("res/bounce_3.wav").await.unwrap(),
     cat_black: load_texture("res/cat_black.png").await.unwrap(),
     cat_grey: load_texture("res/cat_grey.png").await.unwrap(),
     cat_orange: load_texture("res/cat_orange.png").await.unwrap(),
     cgyt: load_texture("res/cgyt.png").await.unwrap(),
     cobblestone: load_texture("res/cobblestone.png").await.unwrap(),
+    lose: load_sound("res/lose.wav").await.unwrap(),
     manekineko: load_texture("res/manekineko.png").await.unwrap(),
     skull_closed: load_texture("res/skull_closed.png").await.unwrap(),
     skull_open: load_texture("res/skull_open.png").await.unwrap(),
     tongue: load_texture("res/tongue.png").await.unwrap(),
-    font: load_ttf_font("res/yoster-island.ttf").await.unwrap(),
+    ui: load_sound("res/ui.wav").await.unwrap(),
+    win: load_sound("res/win.wav").await.unwrap(),
+    yoster_island: load_ttf_font("res/yoster-island.ttf").await.unwrap(),
   };
 
   tm.cat_black.set_filter(FilterMode::Nearest);
