@@ -1,7 +1,9 @@
 use bevy_ecs::prelude::*;
 use macroquad::audio::{
   load_sound,
+  play_sound,
   play_sound_once,
+  PlaySoundParams,
   Sound,
 };
 use macroquad::prelude::*;
@@ -1002,6 +1004,11 @@ async fn main() {
       .with_system(draw_tongue.after("background"))
       .with_system(draw_cat.after("background"))
       .with_system(draw_obstacle.after("background")),
+  );
+
+  play_sound(
+    load_sound("res/song.wav").await.unwrap(),
+    PlaySoundParams { looped: true, volume: 0.3, ..Default::default() },
   );
 
   loop {
