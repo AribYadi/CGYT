@@ -18,6 +18,8 @@ const PLAYER_SPEED: f32 = 160.0;
 const PLAYER_SPEED_UP_TIME: f32 = 2.0;
 const PLAYER_SPEED_UP_SPEED: f32 = 256.0;
 const PLAYER_NO_BOUNCE_TIME: f32 = 6.0;
+const PLAYER_BOUNCIER_TIME: f32 = 10.0;
+const PLAYER_BOUNCIER_MUL: f32 = 3.0;
 const PLAYER_POWERUP_COOLDOWN: f32 = 6.0;
 const FIX_COLLISION: f32 = 5.0;
 const PLAYER_ANIMATION_FPS: f32 = 1.0 / 4.0;
@@ -160,6 +162,7 @@ impl Player {
 enum PowerUpKind {
   SpeedUp,
   NoBounce,
+  Bouncier,
 }
 
 #[derive(Component)]
@@ -363,7 +366,7 @@ fn despawn_all(mut commands: Commands, entities: Query<Entity>) {
 }
 
 fn spawn_player(mut commands: Commands) {
-  commands.spawn_bundle(Player::new(vec2(800.0, 600.0) / 2.0, PowerUpKind::SpeedUp));
+  commands.spawn_bundle(Player::new(vec2(800.0, 600.0) / 2.0, PowerUpKind::Bouncier));
 }
 
 fn spawn_tongue(mut commands: Commands, level: Res<Level>) {
@@ -556,6 +559,7 @@ fn control_player(mut players: Query<&mut Player>, obstacles: Query<&Obstacle>) 
           player.powerup_timer = match player.powerup_kind {
             PowerUpKind::SpeedUp => PLAYER_SPEED_UP_TIME,
             PowerUpKind::NoBounce => PLAYER_NO_BOUNCE_TIME,
+            PowerUpKind::Bouncier => PLAYER_BOUNCIER_TIME,
           };
           player.powerup_cooldown_timer = PLAYER_POWERUP_COOLDOWN;
         } else if player.powerup_timer <= 0.0 {
@@ -712,10 +716,7 @@ fn cat_collision(
 ) {
   for mut player in &mut players {
     for mut cat in &mut cats {
-      if player.rect.overlaps(&cat.rect)
-        && !(player.powerup_kind == PowerUpKind::NoBounce && player.powerup_timer > 0.0)
-        && player.bounce_percentage.is_none()
-      {
+      if player.rect.overlaps(&cat.rect) && player.bounce_percentage.is_none() {
         let sound = match rand::gen_range(0, 3) {
           0 => tm.bounce_1,
           1 => tm.bounce_2,
@@ -725,15 +726,23 @@ fn cat_collision(
         play_sound_once(sound);
 
         let dir = (player.rect.center() - cat.rect.center()).normalize_or_zero();
+        let powerup_mul =
+          if player.powerup_kind == PowerUpKind::Bouncier && player.powerup_timer > 0.0 {
+            PLAYER_BOUNCIER_MUL
+          } else {
+            1.0
+          };
         let cat_bounce_amount = match cat.kind {
           CatKind::Attacker => CAT_ATTACKER_BOUNCE,
           CatKind::Defender => CAT_DEFENDER_BOUNCE,
           CatKind::Slowing => CAT_SLOWING_BOUNCE,
         };
-        cat.bounce_dest = cat.rect.point() - dir * cat_bounce_amount;
+        cat.bounce_dest = cat.rect.point() - dir * cat_bounce_amount * powerup_mul;
         cat.bounce_percentage = Some(0.0);
-        player.bounce_dest = player.rect.point() + dir * cat_bounce_amount;
-        player.bounce_percentage = Some(0.0);
+        if !(player.powerup_kind == PowerUpKind::NoBounce && player.powerup_timer > 0.0) {
+          player.bounce_dest = player.rect.point() + dir * cat_bounce_amount;
+          player.bounce_percentage = Some(0.0);
+        }
       }
     }
   }
