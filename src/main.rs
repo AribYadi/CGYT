@@ -158,7 +158,7 @@ impl Player {
   }
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 enum PowerUpKind {
   SpeedUp,
   NoBounce,
@@ -314,6 +314,7 @@ fn level_select(
   mut game_state: ResMut<State<GameState>>,
   mut just_pressed_back_button: ResMut<JustPressedBackButton>,
   mut level: ResMut<Level>,
+  mut powerup: ResMut<PowerUpKind>,
 ) {
   let mouse_pointer: Vec2 = mouse_position().into();
 
@@ -338,6 +339,25 @@ fn level_select(
         let _ = game_state.overwrite_set(GameState::Playing);
       }
     }
+  }
+
+  let powerup_button = Rect::new(0.0, (screen_height() - 64.0) / 2.0, 64.0, 64.0);
+  draw_ui_button(
+    &tm,
+    &powerup_button,
+    match *powerup {
+      PowerUpKind::SpeedUp => "1",
+      PowerUpKind::NoBounce => "2",
+      PowerUpKind::Bouncier => "3",
+    },
+  );
+
+  if powerup_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
+    *powerup = match *powerup {
+      PowerUpKind::SpeedUp => PowerUpKind::NoBounce,
+      PowerUpKind::NoBounce => PowerUpKind::Bouncier,
+      PowerUpKind::Bouncier => PowerUpKind::SpeedUp,
+    };
   }
 
   let back_button = Rect::new(screen_width() / 2.0 - 250.0, screen_height() - 100.0, 500.0, 50.0);
@@ -365,8 +385,8 @@ fn despawn_all(mut commands: Commands, entities: Query<Entity>) {
   }
 }
 
-fn spawn_player(mut commands: Commands) {
-  commands.spawn_bundle(Player::new(vec2(800.0, 600.0) / 2.0, PowerUpKind::Bouncier));
+fn spawn_player(mut commands: Commands, powerup: Res<PowerUpKind>) {
+  commands.spawn_bundle(Player::new(vec2(800.0, 600.0) / 2.0, *powerup));
 }
 
 fn spawn_tongue(mut commands: Commands, level: Res<Level>) {
@@ -903,6 +923,7 @@ async fn main() {
   world.insert_resource(Exit(false));
   world.insert_resource(JustPressedBackButton(false, 0.0));
   world.insert_resource(Level(1));
+  world.insert_resource(PowerUpKind::SpeedUp);
   world.insert_resource(Camera2D::from_display_rect(Rect::new(
     0.0,
     0.0,
