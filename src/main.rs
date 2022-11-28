@@ -68,6 +68,7 @@ struct TextureManager {
   bounce_1: Sound,
   bounce_2: Sound,
   bounce_3: Sound,
+  bouncier_powerup: Texture2D,
   cat_black: Texture2D,
   cat_grey: Texture2D,
   cat_orange: Texture2D,
@@ -75,8 +76,10 @@ struct TextureManager {
   cobblestone: Texture2D,
   lose: Sound,
   manekineko: Texture2D,
+  no_bounce_powerup: Texture2D,
   skull_closed: Texture2D,
   skull_open: Texture2D,
+  speed_up_powerup: Texture2D,
   tongue: Texture2D,
   ui: Sound,
   win: Sound,
@@ -342,14 +345,22 @@ fn level_select(
   }
 
   let powerup_button = Rect::new(0.0, (screen_height() - 64.0) / 2.0, 64.0, 64.0);
-  draw_ui_button(
-    &tm,
-    &powerup_button,
+  draw_rectangle(
+    powerup_button.x,
+    powerup_button.y,
+    powerup_button.w,
+    powerup_button.h,
+    UI_FG_COLOR,
+  );
+  draw_texture(
     match *powerup {
-      PowerUpKind::SpeedUp => "1",
-      PowerUpKind::NoBounce => "2",
-      PowerUpKind::Bouncier => "3",
+      PowerUpKind::SpeedUp => tm.speed_up_powerup,
+      PowerUpKind::NoBounce => tm.no_bounce_powerup,
+      PowerUpKind::Bouncier => tm.bouncier_powerup,
     },
+    powerup_button.x + UI_BUTTON_OUTLINE,
+    powerup_button.y + UI_BUTTON_OUTLINE,
+    WHITE,
   );
 
   if powerup_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
@@ -935,6 +946,7 @@ async fn main() {
     bounce_1: load_sound("res/bounce_1.wav").await.unwrap(),
     bounce_2: load_sound("res/bounce_2.wav").await.unwrap(),
     bounce_3: load_sound("res/bounce_3.wav").await.unwrap(),
+    bouncier_powerup: load_texture("res/bouncier_powerup.png").await.unwrap(),
     cat_black: load_texture("res/cat_black.png").await.unwrap(),
     cat_grey: load_texture("res/cat_grey.png").await.unwrap(),
     cat_orange: load_texture("res/cat_orange.png").await.unwrap(),
@@ -942,22 +954,27 @@ async fn main() {
     cobblestone: load_texture("res/cobblestone.png").await.unwrap(),
     lose: load_sound("res/lose.wav").await.unwrap(),
     manekineko: load_texture("res/manekineko.png").await.unwrap(),
+    no_bounce_powerup: load_texture("res/no_bounce_powerup.png").await.unwrap(),
     skull_closed: load_texture("res/skull_closed.png").await.unwrap(),
     skull_open: load_texture("res/skull_open.png").await.unwrap(),
+    speed_up_powerup: load_texture("res/speed_up_powerup.png").await.unwrap(),
     tongue: load_texture("res/tongue.png").await.unwrap(),
     ui: load_sound("res/ui.wav").await.unwrap(),
     win: load_sound("res/win.wav").await.unwrap(),
     yoster_island: load_ttf_font("res/yoster-island.ttf").await.unwrap(),
   };
 
+  tm.bouncier_powerup.set_filter(FilterMode::Nearest);
   tm.cat_black.set_filter(FilterMode::Nearest);
   tm.cat_grey.set_filter(FilterMode::Nearest);
   tm.cat_orange.set_filter(FilterMode::Nearest);
   tm.cgyt.set_filter(FilterMode::Nearest);
   tm.cobblestone.set_filter(FilterMode::Nearest);
   tm.manekineko.set_filter(FilterMode::Nearest);
+  tm.no_bounce_powerup.set_filter(FilterMode::Nearest);
   tm.skull_closed.set_filter(FilterMode::Nearest);
   tm.skull_open.set_filter(FilterMode::Nearest);
+  tm.speed_up_powerup.set_filter(FilterMode::Nearest);
   tm.tongue.set_filter(FilterMode::Nearest);
 
   world.insert_resource(tm);
