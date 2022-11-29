@@ -2,6 +2,20 @@
 
 CGYT?: Cat Got Your Tongue? A game where you have catch your tongue before the cats get it first.
 
+## Controls
+
+- `WASD` | `Arrow Keys` => Moves the player
+- `P` => Activates the powerup you've selected
+
+## Power-Ups
+
+To select a powerup, go into the level selection screen and click the icon to the left of the screen.
+The powerups can be activated by pressing the `P` key and have a 6 second cooldown.
+
+- ![Speed Up](res/speed_up_powerup.png) => Gives a speed increase to the player for 2 seconds
+- ![No Bounce](res/no_bounce_powerup.png) => Make the player not bounce when colliding with a cat and last for 6 seconds
+- ![Bouncier](res/bouncier_powerup.png) => Make the cat bounce farther when colliding with the player and last for 10 seconds
+
 ## Building
 
 ```bash

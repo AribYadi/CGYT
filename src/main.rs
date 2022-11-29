@@ -16,7 +16,7 @@ const PLAYER_WIDTH: f32 = 86.0;
 const PLAYER_HEIGHT: f32 = 105.0;
 const PLAYER_SPEED: f32 = 160.0;
 const PLAYER_SPEED_UP_TIME: f32 = 2.0;
-const PLAYER_SPEED_UP_SPEED: f32 = 256.0;
+const PLAYER_SPEED_UP_MUL: f32 = 1.6;
 const PLAYER_NO_BOUNCE_TIME: f32 = 6.0;
 const PLAYER_BOUNCIER_TIME: f32 = 10.0;
 const PLAYER_BOUNCIER_MUL: f32 = 3.0;
@@ -556,7 +556,7 @@ fn control_player(mut players: Query<&mut Player>, obstacles: Query<&Obstacle>) 
       }
 
       let speed = if player.powerup_kind == PowerUpKind::SpeedUp && player.powerup_timer > 0.0 {
-        PLAYER_SPEED_UP_SPEED
+        PLAYER_SPEED * PLAYER_SPEED_UP_MUL
       } else {
         PLAYER_SPEED
       } * player.speed_mul;
