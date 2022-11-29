@@ -52,6 +52,7 @@ const FONT_SIZE: u16 = 30;
 const UI_BG_COLOR: Color = color_u8!(0, 153, 219, 255);
 const UI_FG_COLOR: Color = color_u8!(44, 232, 245, 255);
 const UI_BUTTON_OUTLINE: f32 = 5.0;
+const FLASH_DURATION: f32 = 0.25;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum GameState {
@@ -63,6 +64,7 @@ enum GameState {
 struct Exit(bool);
 struct JustPressedBackButton(bool, f32);
 struct Level(usize);
+struct Flash(f32);
 
 struct TextureManager {
   bounce_1: Sound,
@@ -248,6 +250,19 @@ fn darken_background() {
   draw_rectangle(0.0, 0.0, screen_width(), screen_height(), color_u8!(0, 0, 0, 100));
 }
 
+fn flash(flash_timer: &mut ResMut<Flash>) { flash_timer.0 = FLASH_DURATION; }
+
+fn update_flash(mut flash_timer: ResMut<Flash>) {
+  flash_timer.0 -= get_frame_time();
+  draw_rectangle(
+    0.0,
+    0.0,
+    screen_width(),
+    screen_height(),
+    color_u8!(255, 255, 255, (255.0 * (flash_timer.0 / FLASH_DURATION)) as u8),
+  );
+}
+
 fn draw_ui_button(tm: &Res<TextureManager>, rect: &Rect, txt: &str) {
   draw_rectangle(rect.x, rect.y, rect.w, rect.h, UI_FG_COLOR);
   draw_rectangle(
@@ -277,6 +292,7 @@ fn main_menu(
   mut exit: ResMut<Exit>,
   mut game_state: ResMut<State<GameState>>,
   just_pressed_back_button: Res<JustPressedBackButton>,
+  mut flash_timer: ResMut<Flash>,
 ) {
   let mouse_pointer: Vec2 = mouse_position().into();
 
@@ -296,6 +312,7 @@ fn main_menu(
 
   if play_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
     play_sound_once(tm.ui);
+    flash(&mut flash_timer);
     let _ = game_state.overwrite_set(GameState::LevelSelect);
   }
 
@@ -308,6 +325,7 @@ fn main_menu(
     && !just_pressed_back_button.0
   {
     play_sound_once(tm.ui);
+    flash(&mut flash_timer);
     *exit = Exit(true);
   }
 }
@@ -318,6 +336,7 @@ fn level_select(
   mut just_pressed_back_button: ResMut<JustPressedBackButton>,
   mut level: ResMut<Level>,
   mut powerup: ResMut<PowerUpKind>,
+  mut flash_timer: ResMut<Flash>,
 ) {
   let mouse_pointer: Vec2 = mouse_position().into();
 
@@ -376,6 +395,7 @@ fn level_select(
 
   if back_button.contains(mouse_pointer) && is_mouse_button_pressed(MouseButton::Left) {
     play_sound_once(tm.ui);
+    flash(&mut flash_timer);
     let _ = game_state.overwrite_set(GameState::MainMenu);
     just_pressed_back_button.0 = true;
     just_pressed_back_button.1 = 0.1;
@@ -934,6 +954,7 @@ async fn main() {
   world.insert_resource(Exit(false));
   world.insert_resource(JustPressedBackButton(false, 0.0));
   world.insert_resource(Level(1));
+  world.insert_resource(Flash(0.0));
   world.insert_resource(PowerUpKind::SpeedUp);
   world.insert_resource(Camera2D::from_display_rect(Rect::new(
     0.0,
@@ -999,7 +1020,8 @@ async fn main() {
     SystemSet::on_update(GameState::MainMenu)
       .with_system(draw_background.label("background"))
       .with_system(darken_background.label("darken_background").after("background"))
-      .with_system(main_menu.after("darken_background")),
+      .with_system(main_menu.after("darken_background"))
+      .with_system(update_flash.after("darken_background")),
   );
 
   schedule.add_system_set_to_stage(
@@ -1017,7 +1039,8 @@ async fn main() {
     SystemSet::on_update(GameState::LevelSelect)
       .with_system(draw_background.label("background"))
       .with_system(darken_background.label("darken_background").after("background"))
-      .with_system(level_select.after("darken_background")),
+      .with_system(level_select.after("darken_background"))
+      .with_system(update_flash.after("darken_background")),
   );
 
   schedule.add_system_set_to_stage(
