@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 bevy_ecs = "0.8.1"
 macroquad = "0.3.24"
+
+[build-dependencies]
+winres = "0.1"

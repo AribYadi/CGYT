@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use bevy_ecs::prelude::*;
 use macroquad::audio::{
   load_sound,
@@ -6,10 +8,19 @@ use macroquad::audio::{
   PlaySoundParams,
   Sound,
 };
+use macroquad::miniquad::conf::Icon;
 use macroquad::prelude::*;
 
 fn window_conf() -> Conf {
-  Conf { window_title: "Game Off 2022".to_string(), ..Default::default() }
+  Conf {
+    window_title: "Game Off 2022".to_string(),
+    icon: Some(Icon {
+      small: include_bytes!("../res/icon16.rgba").to_owned(),
+      medium: include_bytes!("../res/icon32.rgba").to_owned(),
+      big: include_bytes!("../res/icon64.rgba").to_owned(),
+    }),
+    ..Default::default()
+  }
 }
 
 const PLAYER_WIDTH: f32 = 86.0;
