@@ -1,6 +1,7 @@
-# CGYT?
+# CGYT
 
-CGYT?: Cat Got Your Tongue? A game where you have catch your tongue before the cats get it first.
+CGYT: Cat Got Your Tongue. A game where you have catch your tongue before the cats get it first.
+Made for the [Game Off 2022](https://itch.io/jam/game-off-2022) game jam.
 
 ## Controls
 
